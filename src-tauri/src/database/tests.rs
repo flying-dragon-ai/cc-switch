@@ -172,13 +172,104 @@ fn schema_migration_sets_user_version_when_missing() {
 fn schema_migration_rejects_future_version() {
     let conn = Connection::open_in_memory().expect("open memory db");
     Database::create_tables_on_conn(&conn).expect("create tables");
-    Database::set_user_version(&conn, SCHEMA_VERSION + 1).expect("set future version");
+    Database::set_user_version(&conn, SCHEMA_VERSION + 3).expect("set future version");
 
     let err =
         Database::apply_schema_migrations_on_conn(&conn).expect_err("should reject higher version");
     assert!(
         err.to_string().contains("数据库版本过新"),
         "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn schema_migration_normalizes_legacy_fork_version_to_main_version() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    Database::create_tables_on_conn(&conn).expect("create tables");
+    Database::set_user_version(&conn, 7).expect("set legacy fork version");
+
+    Database::apply_schema_migrations_on_conn(&conn).expect("apply migration");
+
+    assert_eq!(
+        Database::get_user_version(&conn).expect("read version after"),
+        SCHEMA_VERSION
+    );
+}
+
+#[test]
+fn schema_migration_cleans_legacy_fork_provider_failover_artifacts() {
+    let conn = Connection::open_in_memory().expect("open memory db");
+    Database::create_tables_on_conn(&conn).expect("create tables");
+    Database::set_user_version(&conn, SCHEMA_VERSION).expect("set current schema version");
+
+    conn.execute(
+        "CREATE TABLE forkdb.fork_provider_failover_queue (
+            app_type TEXT NOT NULL,
+            provider_id TEXT NOT NULL,
+            sort_index INTEGER
+        )",
+        [],
+    )
+    .expect("create legacy fork_provider_failover_queue");
+    conn.execute(
+        "CREATE INDEX forkdb.idx_fork_provider_failover_queue
+         ON fork_provider_failover_queue(app_type, sort_index)",
+        [],
+    )
+    .expect("create legacy idx_fork_provider_failover_queue");
+    conn.execute(
+        "INSERT INTO forkdb.settings (key, value) VALUES ('fork_provider_failover_enabled_claude', '1')",
+        [],
+    )
+    .expect("insert legacy setting key");
+    conn.execute(
+        "INSERT INTO forkdb.settings (key, value) VALUES ('fork_failover_enabled_claude', '1')",
+        [],
+    )
+    .expect("insert unrelated setting key");
+
+    Database::apply_schema_migrations_on_conn(&conn).expect("apply migrations");
+
+    let table_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM forkdb.sqlite_master
+             WHERE type = 'table' AND name = 'fork_provider_failover_queue'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query legacy table");
+    assert_eq!(table_count, 0, "legacy table should be removed");
+
+    let index_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM forkdb.sqlite_master
+             WHERE type = 'index' AND name = 'idx_fork_provider_failover_queue'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query legacy index");
+    assert_eq!(index_count, 0, "legacy index should be removed");
+
+    let legacy_key_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM forkdb.settings
+             WHERE key LIKE 'fork_provider_failover_enabled_%'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query legacy setting keys");
+    assert_eq!(legacy_key_count, 0, "legacy setting keys should be removed");
+
+    let unrelated_key_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM forkdb.settings WHERE key = 'fork_failover_enabled_claude'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query unrelated setting key");
+    assert_eq!(
+        unrelated_key_count, 1,
+        "non-legacy setting keys should be preserved"
     );
 }
 

@@ -120,6 +120,52 @@ pub async fn update_proxy_config_for_app(
         .map_err(|e| e.to_string())
 }
 
+/// 获取 Claude 模型路由全局开关（Fork 扩展）
+#[tauri::command]
+pub async fn get_claude_model_routing_settings(
+    state: tauri::State<'_, AppState>,
+) -> Result<ClaudeModelRoutingSettings, String> {
+    state
+        .db
+        .get_claude_model_routing_settings()
+        .map_err(|e| e.to_string())
+}
+
+/// 更新 Claude 模型路由全局开关（Fork 扩展）
+#[tauri::command]
+pub async fn set_claude_model_routing_settings(
+    state: tauri::State<'_, AppState>,
+    settings: ClaudeModelRoutingSettings,
+) -> Result<(), String> {
+    state
+        .db
+        .set_claude_model_routing_settings(&settings)
+        .map_err(|e| e.to_string())
+}
+
+/// 获取 Claude 全部模型族路由策略（Fork 扩展）
+#[tauri::command]
+pub async fn list_claude_model_route_policies(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<ClaudeModelRoutePolicy>, String> {
+    state
+        .db
+        .list_claude_model_route_policies()
+        .map_err(|e| e.to_string())
+}
+
+/// 更新 Claude 单个模型族路由策略（Fork 扩展）
+#[tauri::command]
+pub async fn upsert_claude_model_route_policy(
+    state: tauri::State<'_, AppState>,
+    policy: ClaudeModelRoutePolicy,
+) -> Result<(), String> {
+    state
+        .db
+        .upsert_claude_model_route_policy(&policy)
+        .map_err(|e| e.to_string())
+}
+
 async fn get_default_cost_multiplier_internal(
     state: &AppState,
     app_type: &str,
@@ -349,7 +395,13 @@ pub async fn reset_circuit_breaker(
                     let switch_manager =
                         crate::proxy::failover_switch::FailoverSwitchManager::new(db.clone());
                     if let Err(e) = switch_manager
-                        .try_switch(Some(&app_handle), &app_type, &provider_id, &provider_name)
+                        .try_switch(
+                            Some(&app_handle),
+                            &app_type,
+                            &provider_id,
+                            &provider_name,
+                            None,
+                        )
                         .await
                     {
                         log::error!("[Recovery] 自动切换失败: {e}");

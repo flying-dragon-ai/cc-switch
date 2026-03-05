@@ -38,7 +38,9 @@
     "reset": "重置",
     "actions": "操作",
     "deleting": "删除中...",
-    "auto": "自动"
+    "auto": "自动",
+    "enabled": "已开启",
+    "notSet": "未设置"
   },
   "apiKeyInput": {
     "placeholder": "请输入API Key",
@@ -143,7 +145,11 @@
         "oauthHint": "Google 官方使用 OAuth 个人认证，无需填写 API Key。首次使用时会自动打开浏览器进行登录。",
         "apiKeyPlaceholder": "请输入 Gemini API Key"
       }
-    }
+    },
+    "quickMoveAlreadyBottom": "该供应商已在末尾",
+    "quickMoveAlreadyTop": "该供应商已在目标位置",
+    "quickMoveBottom": "一键置底",
+    "quickMoveTop": "一键置顶"
   },
   "notifications": {
     "providerAdded": "供应商已添加",
@@ -274,6 +280,13 @@
           "debug": "详细信息，包含 SSE 流和请求/响应详情",
           "trace": "全部日志，最详细"
         }
+      },
+      "forkFailover": {
+        "description": "用于配置 Claude 模型路由（模型->供应商）的模型首选与备用顺序；在供应商列表启用后生效。",
+        "title": "Claude 模型路由（模型->供应商）配置"
+      },
+      "modelTestConfig": {
+        "title": "模型测试配置"
       }
     },
     "language": "界面语言",
@@ -550,7 +563,8 @@
       "pricingLoadFailed": "加载计费配置失败：{{error}}",
       "defaultCostMultiplierRequired": "默认倍率不能为空",
       "defaultCostMultiplierInvalid": "默认倍率格式不正确"
-    }
+    },
+    "saveFailedGeneric": "保存失败，请重试"
   },
   "apps": {
     "claude": "Claude",
@@ -596,7 +610,14 @@
     "daysAgo": "{{count}} 天前",
     "roleUser": "用户",
     "roleSystem": "系统",
-    "roleTool": "工具"
+    "roleTool": "工具",
+    "conversationHistory": "对话记录",
+    "copyCommand": "复制命令",
+    "copyMessage": "复制内容",
+    "messageCopied": "已复制消息内容",
+    "noResumeCommand": "此会话无法恢复",
+    "resume": "恢复会话",
+    "resumeTooltip": "在终端中恢复此会话"
   },
   "console": {
     "providerSwitchReceived": "收到供应商切换事件:",
@@ -691,7 +712,11 @@
     "categoryOfficial": "官方",
     "categoryCnOfficial": "开源官方",
     "categoryAggregation": "聚合服务",
-    "categoryThirdParty": "第三方"
+    "categoryThirdParty": "第三方",
+    "autoFetchModels": "自动获取模型",
+    "fetchedModelCount": "已获取 {{count}} 个模型，可一键导入。",
+    "modelConfig": "模型配置",
+    "modelsFetched": "已获取 {{count}} 个模型"
   },
   "endpointTest": {
     "title": "请求地址管理",
@@ -717,7 +742,9 @@
     "testUnavailable": "测速功能不可用",
     "noResult": "未返回结果",
     "testFailed": "测速失败: {{error}}",
-    "status": "状态码：{{code}}"
+    "status": "状态码：{{code}}",
+    "empty": "暂无端点",
+    "notTested": "未测试"
   },
   "providerAdvanced": {
     "testConfig": "模型测试配置",
@@ -760,7 +787,10 @@
     "extractFromCurrent": "从编辑内容提取",
     "extractNoCommonConfig": "当前编辑内容没有可提取的通用配置",
     "extractFailed": "提取失败: {{error}}",
-    "saveFailed": "保存失败: {{error}}"
+    "saveFailed": "保存失败: {{error}}",
+    "modelName": "模型名称",
+    "modelNameHint": "指定使用的模型，将自动更新到 config.toml 中",
+    "modelNamePlaceholder": "例如: gpt-5-codex"
   },
   "geminiConfig": {
     "envFile": "环境变量 (.env)",
@@ -812,7 +842,10 @@
     "noExtraOptions": "暂无额外选项",
     "noModelOptions": "模型选项，点击 + 添加",
     "modelOptionKeyPlaceholder": "provider",
-    "modelOptionValuePlaceholder": "{\"order\": [\"baseten\"]}"
+    "modelOptionValuePlaceholder": "{\"order\": [\"baseten\"]}",
+    "importFetchedModels": "导入已获取模型",
+    "importFetchedModelsResult": "模型导入完成：新增 {{imported}} 个，补全名称 {{updated}} 个。",
+    "noFetchedModels": "暂无可导入模型，请先自动获取。"
   },
   "providerPreset": {
     "label": "预设供应商",
@@ -905,7 +938,28 @@
     "costBreakdown": "成本明细",
     "performance": "性能信息",
     "latency": "延迟",
-    "errorMessage": "错误信息"
+    "errorMessage": "错误信息",
+    "addPricing": "新增定价",
+    "avgCost": "平均成本",
+    "avgLatency": "平均延迟",
+    "cacheCreationCostPerMillion": "缓存写入成本 (每百万 tokens, USD)",
+    "cacheReadCostPerMillion": "缓存读取成本 (每百万 tokens, USD)",
+    "editPricing": "编辑定价",
+    "inputCostPerMillion": "输入成本 (每百万 tokens, USD)",
+    "invalidPrice": "价格必须为非负数",
+    "invalidTimeRange": "请选择完整的开始/结束时间",
+    "invalidTimeRangeOrder": "开始时间不能晚于结束时间",
+    "modelId": "模型 ID",
+    "modelIdRequired": "模型 ID 不能为空",
+    "never": "从未更新",
+    "outputCostPerMillion": "输出成本 (每百万 tokens, USD)",
+    "pricingAdded": "定价已添加",
+    "pricingUpdated": "定价已更新",
+    "requestId": "请求ID",
+    "requests": "请求数",
+    "successRate": "成功率",
+    "timeRangeTooLarge": "时间范围过大，请缩小范围",
+    "tokens": "Tokens"
   },
   "usageScript": {
     "title": "配置用量查询",
@@ -1522,7 +1576,14 @@
       "skillsPath": "Skills 路径",
       "hint": "此操作将添加 Skill 仓库到列表。",
       "hintDetail": "添加后，您可以在 Skills 管理界面中选择安装具体的 Skill。"
-    }
+    },
+    "usageApiKey": "用量 API Key",
+    "usageAutoInterval": "自动查询",
+    "usageAutoIntervalValue": "每 {{minutes}} 分钟",
+    "usageBaseUrl": "用量查询地址",
+    "usageScript": "用量查询",
+    "usageScriptDisabled": "未启用",
+    "usageScriptEnabled": "已启用"
   },
   "iconPicker": {
     "search": "搜索图标",
@@ -1678,7 +1739,13 @@
       "hint": "选择要接管的应用，启用后该应用的请求将通过本地代理转发",
       "enabled": "{{app}} 接管已启用",
       "disabled": "{{app}} 接管已关闭",
-      "failed": "切换接管状态失败"
+      "failed": "切换接管状态失败",
+      "requiredForClaudeRouting": "需要先开启 Claude 代理接管，才能使用此卡片。",
+      "tooltip": {
+        "active": "{{app}} 已接管 - {{address}}:{{port}}\n切换该应用供应商为热切换",
+        "broken": "{{app}} 已接管，但代理服务未运行",
+        "inactive": "接管 {{app}} 的 Live 配置，让该应用请求走本地代理"
+      }
     },
     "failover": {
       "proxyRequired": "需要先启动代理服务才能配置故障转移",
@@ -1701,7 +1768,8 @@
       "removeFailed": "移除失败",
       "reorderSuccess": "队列顺序已更新",
       "reorderFailed": "更新顺序失败",
-      "toggleFailed": "状态更新失败"
+      "toggleFailed": "状态更新失败",
+      "modelInfo": "这是当前模型族的独立备选队列，仅影响该模型族。若此队列为空，系统会回退到 Claude 通用队列。"
     },
     "autoFailover": {
       "info": "当故障转移队列中配置了多个供应商时，系统会在请求失败时按优先级顺序依次尝试。当某个供应商连续失败达到阈值时，熔断器会打开并在一段时间内跳过该供应商。",
@@ -1728,8 +1796,76 @@
       "successThresholdLabel": "恢复成功阈值",
       "successThresholdExplain": "半开状态下，成功达到此次数时关闭熔断器，供应商恢复可用",
       "errorRateLabel": "错误率阈值",
-      "errorRateExplain": "错误率超过此值时，即使未达到失败阈值也会打开熔断器"
-    }
+      "errorRateExplain": "错误率超过此值时，即使未达到失败阈值也会打开熔断器",
+      "maxRetries": "最大重试次数",
+      "maxRetriesHint": "请求失败时的重试次数（0-10）",
+      "nonStreaming": "非流式超时",
+      "nonStreamingHint": "非流式请求的总超时时间，范围 60-1200 秒，默认 600 秒（10 分钟）",
+      "streamingFirstByte": "流式首字节超时",
+      "streamingFirstByteHint": "等待首个数据块的最大时间，范围 1-120 秒，默认 60 秒",
+      "streamingIdle": "流式静默超时",
+      "streamingIdleHint": "数据块之间的最大间隔，范围 60-600 秒，填 0 禁用（防止中途卡住）",
+      "timeoutSettings": "超时配置"
+    },
+    "claudeModelRouting": {
+      "defaultProvider": "选择首选站点",
+      "description": "先走模型首选，失败后按模型备用；全部失败再走全局备用。",
+      "failoverMode": "模型备用模式",
+      "failoverModeRandom": "随机",
+      "failoverModeRoundRobin": "轮询",
+      "modelColumn": "模型",
+      "modelQueueDescription": "从上到下依次尝试；若该模型未配置备用列表，则回退全局备用队列。",
+      "modelQueueTitle": "模型备用队列",
+      "none": "不固定（使用全局默认）",
+      "providerNotFound": "未找到匹配供应商",
+      "queueDisabledHint": "模型路由当前未启用。请先回到供应商列表，启用“Claude 模型路由（模型->供应商）”。",
+      "rowRouteActive": "已固定首选站点",
+      "rowRouteInactive": "未固定（使用全局默认）",
+      "searchProvider": "输入名称搜索供应商...",
+      "statusColumn": "状态",
+      "step2": "每类模型的首选站点",
+      "step3": "模型备用顺序",
+      "title": "Claude 模型路由（自定义）"
+    },
+    "logging": {
+      "disabled": "日志记录已关闭",
+      "enabled": "日志记录已启用",
+      "failed": "切换日志状态失败"
+    },
+    "mode": {
+      "bannerTitle": "Claude 模型路由（模型->供应商）",
+      "collapseModelRoutes": "收起模型路由详情",
+      "editForkFailover": "编辑 Claude 路由设置",
+      "expandModelRoutes": "展开模型路由详情",
+      "global": "全局故障转移模式",
+      "globalFallback": "回退全局模式",
+      "modelBackupEditHint": "模型备用站点请点击“编辑”跳转到设置页进行配置。",
+      "modelFailover": "模型级故障转移模式",
+      "modelNameForProvider": "模型：{{model}}",
+      "modelRouting": "模型族定向路由模式",
+      "modelRoutingAndFailover": "模型级故障转移 + 模型族定向路由",
+      "recentSwitch": "最近切换：{{provider}}（{{source}}）",
+      "recentSwitchEmpty": "最近切换：暂无",
+      "retryCount": "故障转移 {{count}} 次",
+      "routeModeAlreadyEnabled": "已启用“固定首选 + 自动换备用”，可点击编辑继续调整。",
+      "routeToggle": "路由模式",
+      "tagDefault": "默认路由",
+      "tagFailover": "故障切换",
+      "virtualActionUnsupported": "虚拟供应商仅支持编辑路由设置",
+      "virtualNotInFailoverQueue": "已启用 Claude 自动故障转移：该卡片不参与 P1/P2 队列排序，仅用于路由配置。",
+      "virtualProvider": "虚拟供应商"
+    },
+    "server": {
+      "startFailed": "启动代理服务失败: {{detail}}",
+      "started": "代理服务已启动 - {{address}}:{{port}}"
+    },
+    "switchSource": {
+      "failover": "故障转移",
+      "failoverEnabled": "开启故障转移",
+      "manual": "手动切换"
+    },
+    "stoppedWithRestore": "代理服务已关闭，已恢复所有接管配置",
+    "stopWithRestoreFailed": "停止失败: {{detail}}"
   },
   "streamCheck": {
     "configSaved": "健康检查配置已保存",
@@ -1743,7 +1879,12 @@
     "maxRetries": "最大重试次数",
     "degradedThreshold": "降级阈值（毫秒）",
     "testPrompt": "检查提示词",
-    "failedHint": "检测结果仅供参考，部分供应商可能不支持此检测方式，建议手动测试确认。"
+    "failedHint": "检测结果仅供参考，部分供应商可能不支持此检测方式，建议手动测试确认。",
+    "error": "{{name}} 检查出错: {{error}}",
+    "failed": "{{name}} 检查失败: {{error}}",
+    "testPromptHint": "每行一条提示词，测试时随机选择",
+    "operational": "{{name}} 运行正常 ({{time}}ms)",
+    "degraded": "{{name}} 响应较慢 ({{time}}ms)"
   },
   "proxyConfig": {
     "proxyEnabled": "代理总开关",

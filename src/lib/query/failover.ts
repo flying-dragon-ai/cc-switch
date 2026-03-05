@@ -3,6 +3,7 @@ import { failoverApi } from "@/lib/api/failover";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { extractErrorMessage } from "@/utils/errorUtils";
+import type { ForkFailoverChainItem } from "@/types/proxy";
 
 // ========== 熔断器 Hooks ==========
 
@@ -103,6 +104,17 @@ export function useFailoverQueue(appType: string) {
 }
 
 /**
+ * 获取模型族独立故障转移队列（Fork 扩展）
+ */
+export function useFailoverQueueForModel(appType: string, modelKey: string) {
+  return useQuery({
+    queryKey: ["failoverQueueModel", appType, modelKey],
+    queryFn: () => failoverApi.getFailoverQueueForModel(appType, modelKey),
+    enabled: !!appType && !!modelKey,
+  });
+}
+
+/**
  * 获取可添加到队列的供应商
  */
 export function useAvailableProvidersForFailover(appType: string) {
@@ -110,6 +122,21 @@ export function useAvailableProvidersForFailover(appType: string) {
     queryKey: ["availableProvidersForFailover", appType],
     queryFn: () => failoverApi.getAvailableProvidersForFailover(appType),
     enabled: !!appType,
+  });
+}
+
+/**
+ * 获取模型族可添加到队列的供应商（Fork 扩展）
+ */
+export function useAvailableProvidersForModelFailover(
+  appType: string,
+  modelKey: string,
+) {
+  return useQuery({
+    queryKey: ["availableProvidersForModelFailover", appType, modelKey],
+    queryFn: () =>
+      failoverApi.getAvailableProvidersForModelFailover(appType, modelKey),
+    enabled: !!appType && !!modelKey,
   });
 }
 
@@ -177,6 +204,38 @@ export function useRemoveFromFailoverQueue() {
           variables.appType,
         ],
       });
+    },
+  });
+}
+
+/**
+ * 覆盖设置模型族故障转移队列（Fork 扩展）
+ */
+export function useSetFailoverQueueForModel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      appType,
+      modelKey,
+      providerIds,
+    }: {
+      appType: string;
+      modelKey: string;
+      providerIds: string[];
+    }) => failoverApi.setFailoverQueueForModel(appType, modelKey, providerIds),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["failoverQueueModel", variables.appType, variables.modelKey],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [
+          "availableProvidersForModelFailover",
+          variables.appType,
+          variables.modelKey,
+        ],
+      });
+      queryClient.invalidateQueries({ queryKey: ["proxyStatus"] });
     },
   });
 }
@@ -279,6 +338,47 @@ export function useSetAutoFailoverEnabled() {
       });
       queryClient.invalidateQueries({
         queryKey: ["providers", variables.appType],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["proxyStatus"],
+      });
+    },
+  });
+}
+
+export function useForkFailoverChain(appType: string) {
+  return useQuery({
+    queryKey: ["forkFailoverChain", appType],
+    queryFn: () => failoverApi.getForkFailoverChain(appType),
+    enabled: !!appType,
+  });
+}
+
+export function useAvailableProvidersForForkFailoverChain(appType: string) {
+  return useQuery({
+    queryKey: ["availableProvidersForForkFailoverChain", appType],
+    queryFn: () => failoverApi.getAvailableProvidersForForkFailoverChain(appType),
+    enabled: !!appType,
+  });
+}
+
+export function useSetForkFailoverChain() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      appType,
+      items,
+    }: {
+      appType: string;
+      items: ForkFailoverChainItem[];
+    }) => failoverApi.setForkFailoverChain(appType, items),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["forkFailoverChain", variables.appType],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["availableProvidersForForkFailoverChain", variables.appType],
       });
       queryClient.invalidateQueries({
         queryKey: ["proxyStatus"],

@@ -170,6 +170,25 @@ impl ProviderService {
         Self::normalize_provider_if_claude(&app_type, &mut provider);
         Self::validate_provider_settings(&app_type, &provider)?;
 
+        // 新增供应商默认插入策略：
+        // - 有现有供应商：插到第 2 个位置（sort_index = 1）
+        // - 无现有供应商：插到第 1 个位置（sort_index = 0）
+        // 如果外部已显式指定 sort_index（如复制后插入特定位置），则保持其指定值。
+        if provider.sort_index.is_none() {
+            let mut providers = state.db.get_all_providers(app_type.as_str())?;
+            let insert_index = if providers.is_empty() { 0 } else { 1 };
+
+            for (index, (_, existing_provider)) in providers.iter_mut().enumerate() {
+                let next_sort_index = if index < insert_index { index } else { index + 1 };
+                if existing_provider.sort_index != Some(next_sort_index) {
+                    existing_provider.sort_index = Some(next_sort_index);
+                    state.db.save_provider(app_type.as_str(), existing_provider)?;
+                }
+            }
+
+            provider.sort_index = Some(insert_index);
+        }
+
         // Save to database
         state.db.save_provider(app_type.as_str(), &provider)?;
 

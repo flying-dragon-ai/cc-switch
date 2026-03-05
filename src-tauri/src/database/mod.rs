@@ -33,8 +33,9 @@ mod tests;
 
 // DAO 类型导出供外部使用
 pub use dao::FailoverQueueItem;
+pub use dao::ForkFailoverChainItem;
 
-use crate::config::get_app_config_dir;
+use crate::config::{get_app_config_dir, get_fork_db_path};
 use crate::error::AppError;
 use rusqlite::{hooks::Action, Connection};
 use serde::Serialize;
@@ -42,8 +43,9 @@ use std::sync::Mutex;
 
 // DAO 方法通过 impl Database 提供，无需额外导出
 
-/// 当前 Schema 版本号
-/// 每次修改表结构时递增，并在 schema.rs 中添加相应的迁移逻辑
+/// 当前主库 Schema 版本号
+/// 注意：Fork 扩展能力写入附加库 forkdb，不应提升主库 user_version，
+/// 以保持与上游版本（v5）兼容。
 pub(crate) const SCHEMA_VERSION: i32 = 5;
 
 /// 安全地序列化 JSON，避免 unwrap panic
@@ -83,6 +85,29 @@ fn register_db_change_hook(conn: &Connection) {
     ));
 }
 
+fn attach_fork_database(conn: &Connection, in_memory: bool) -> Result<(), AppError> {
+    let attach_target = if in_memory {
+        ":memory:".to_string()
+    } else {
+        let fork_db_path = get_fork_db_path();
+        if let Some(parent) = fork_db_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
+        }
+        fork_db_path.to_string_lossy().to_string()
+    };
+
+    conn.execute(
+        "ATTACH DATABASE ?1 AS forkdb",
+        rusqlite::params![attach_target],
+    )
+    .map_err(|e| AppError::Database(format!("附加 forkdb 失败: {e}")))?;
+
+    conn.execute("PRAGMA forkdb.foreign_keys = ON;", [])
+        .map_err(|e| AppError::Database(format!("启用 forkdb 外键失败: {e}")))?;
+
+    Ok(())
+}
+
 impl Database {
     /// 初始化数据库连接并创建表
     ///
@@ -100,6 +125,7 @@ impl Database {
         // 启用外键约束
         conn.execute("PRAGMA foreign_keys = ON;", [])
             .map_err(|e| AppError::Database(e.to_string()))?;
+        attach_fork_database(&conn, false)?;
         register_db_change_hook(&conn);
 
         let db = Self {
@@ -135,6 +161,7 @@ impl Database {
         // 启用外键约束
         conn.execute("PRAGMA foreign_keys = ON;", [])
             .map_err(|e| AppError::Database(e.to_string()))?;
+        attach_fork_database(&conn, true)?;
         register_db_change_hook(&conn);
 
         let db = Self {

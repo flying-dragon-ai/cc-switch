@@ -187,6 +187,7 @@ impl ProxyServer {
                 app_type: app_type.clone(),
                 provider_id: provider_id.clone(),
                 provider_name: provider_name.clone(),
+                model_key: None,
             })
             .collect();
 
@@ -265,7 +266,7 @@ impl ProxyServer {
     pub async fn reset_provider_circuit_breaker(&self, provider_id: &str, app_type: &str) {
         self.state
             .provider_router
-            .reset_provider_breaker(provider_id, app_type)
+            .reset_provider_breaker(provider_id, app_type, None)
             .await;
     }
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Server, Activity, Zap, Globe } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ProxyPanel } from "@/components/proxy";
 import { AutoFailoverConfigPanel } from "@/components/proxy/AutoFailoverConfigPanel";
+import { ClaudeModelRoutingPanel } from "@/components/proxy/ClaudeModelRoutingPanel";
 import { FailoverQueueManager } from "@/components/proxy/FailoverQueueManager";
 import { RectifierConfigPanel } from "@/components/settings/RectifierConfigPanel";
 import { GlobalProxySettings } from "@/components/settings/GlobalProxySettings";
@@ -30,6 +31,7 @@ export function ProxyTabContent({
 }: ProxyTabContentProps) {
   const { t } = useTranslation();
   const [showProxyConfirm, setShowProxyConfirm] = useState(false);
+  const [openSections, setOpenSections] = useState<string[]>([]);
 
   const {
     isRunning,
@@ -62,6 +64,23 @@ export function ProxyTabContent({
     }
   };
 
+  useEffect(() => {
+    const anchor = localStorage.getItem("cc-switch-settings-proxy-anchor");
+    if (anchor !== "forkFailover") return;
+
+    setOpenSections((prev) =>
+      prev.includes("forkFailover") ? prev : [...prev, "forkFailover"],
+    );
+    localStorage.removeItem("cc-switch-settings-proxy-anchor");
+
+    const timer = window.setTimeout(() => {
+      document
+        .getElementById("fork-failover-config-claude")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -69,7 +88,12 @@ export function ProxyTabContent({
       transition={{ duration: 0.3 }}
       className="space-y-4"
     >
-      <Accordion type="multiple" defaultValue={[]} className="w-full space-y-4">
+      <Accordion
+        type="multiple"
+        value={openSections}
+        onValueChange={setOpenSections}
+        className="w-full space-y-4"
+      >
         {/* Local Proxy */}
         <AccordionItem
           value="proxy"
@@ -141,80 +165,111 @@ export function ProxyTabContent({
                 </div>
               )}
 
-              <Tabs defaultValue="claude" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="claude">Claude</TabsTrigger>
-                  <TabsTrigger value="codex">Codex</TabsTrigger>
-                  <TabsTrigger value="gemini">Gemini</TabsTrigger>
-                </TabsList>
-                <TabsContent value="claude" className="mt-4 space-y-6">
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-semibold">
-                        {t("proxy.failoverQueue.title")}
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        {t("proxy.failoverQueue.description")}
-                      </p>
+              <div className={isRunning ? "" : "opacity-60 pointer-events-none"}>
+                <Tabs defaultValue="claude" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="claude">Claude</TabsTrigger>
+                    <TabsTrigger value="codex">Codex</TabsTrigger>
+                    <TabsTrigger value="gemini">Gemini</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="claude" className="mt-4 space-y-6">
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-sm font-semibold">
+                          {t("proxy.failoverQueue.title")}
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                          {t("proxy.failoverQueue.description")}
+                        </p>
+                      </div>
+                      <FailoverQueueManager
+                        appType="claude"
+                        disabled={!isRunning}
+                      />
                     </div>
-                    <FailoverQueueManager
-                      appType="claude"
-                      disabled={!isRunning}
-                    />
-                  </div>
-                  <div className="border-t border-border/50 pt-6">
-                    <AutoFailoverConfigPanel
-                      appType="claude"
-                      disabled={!isRunning}
-                    />
-                  </div>
-                </TabsContent>
-                <TabsContent value="codex" className="mt-4 space-y-6">
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-semibold">
-                        {t("proxy.failoverQueue.title")}
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        {t("proxy.failoverQueue.description")}
-                      </p>
+                    <div className="border-t border-border/50 pt-6">
+                      <AutoFailoverConfigPanel
+                        appType="claude"
+                        disabled={!isRunning}
+                      />
                     </div>
-                    <FailoverQueueManager
-                      appType="codex"
-                      disabled={!isRunning}
-                    />
-                  </div>
-                  <div className="border-t border-border/50 pt-6">
-                    <AutoFailoverConfigPanel
-                      appType="codex"
-                      disabled={!isRunning}
-                    />
-                  </div>
-                </TabsContent>
-                <TabsContent value="gemini" className="mt-4 space-y-6">
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-semibold">
-                        {t("proxy.failoverQueue.title")}
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        {t("proxy.failoverQueue.description")}
-                      </p>
+                  </TabsContent>
+                  <TabsContent value="codex" className="mt-4 space-y-6">
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-sm font-semibold">
+                          {t("proxy.failoverQueue.title")}
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                          {t("proxy.failoverQueue.description")}
+                        </p>
+                      </div>
+                      <FailoverQueueManager
+                        appType="codex"
+                        disabled={!isRunning}
+                      />
                     </div>
-                    <FailoverQueueManager
-                      appType="gemini"
-                      disabled={!isRunning}
-                    />
-                  </div>
-                  <div className="border-t border-border/50 pt-6">
-                    <AutoFailoverConfigPanel
-                      appType="gemini"
-                      disabled={!isRunning}
-                    />
-                  </div>
-                </TabsContent>
-              </Tabs>
+                    <div className="border-t border-border/50 pt-6">
+                      <AutoFailoverConfigPanel
+                        appType="codex"
+                        disabled={!isRunning}
+                      />
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="gemini" className="mt-4 space-y-6">
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-sm font-semibold">
+                          {t("proxy.failoverQueue.title")}
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                          {t("proxy.failoverQueue.description")}
+                        </p>
+                      </div>
+                      <FailoverQueueManager
+                        appType="gemini"
+                        disabled={!isRunning}
+                      />
+                    </div>
+                    <div className="border-t border-border/50 pt-6">
+                      <AutoFailoverConfigPanel
+                        appType="gemini"
+                        disabled={!isRunning}
+                      />
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
             </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Fork Failover (Custom) */}
+        <AccordionItem
+          value="forkFailover"
+          id="fork-failover-config-claude"
+          className="rounded-xl glass-card overflow-hidden"
+        >
+          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+            <div className="flex items-center gap-3">
+              <Activity className="h-5 w-5 text-cyan-500" />
+              <div className="text-left">
+                <h3 className="text-base font-semibold">
+                  {t("settings.advanced.forkFailover.title", {
+                    defaultValue: "Claude 模型路由（模型->供应商）配置",
+                  })}
+                </h3>
+                <p className="text-sm text-muted-foreground font-normal">
+                  {t("settings.advanced.forkFailover.description", {
+                    defaultValue:
+                      "用于配置 Claude 模型路由（模型->供应商）的模型首选与备用顺序；在供应商列表启用后生效。",
+                  })}
+                </p>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+            <ClaudeModelRoutingPanel />
           </AccordionContent>
         </AccordionItem>
 

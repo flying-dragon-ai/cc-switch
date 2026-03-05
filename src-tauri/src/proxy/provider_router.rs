@@ -7,6 +7,7 @@ use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::circuit_breaker::{AllowResult, CircuitBreaker, CircuitBreakerConfig};
+use rand::prelude::SliceRandom;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -18,6 +19,8 @@ pub struct ProviderRouter {
     db: Arc<Database>,
     /// 熔断器管理器 - key 格式: "app_type:provider_id"
     circuit_breakers: Arc<RwLock<HashMap<String, Arc<CircuitBreaker>>>>,
+    /// 模型级轮询游标 - key 格式: "app_type:model_key"
+    model_failover_cursors: Arc<RwLock<HashMap<String, usize>>>,
 }
 
 impl ProviderRouter {
@@ -26,6 +29,7 @@ impl ProviderRouter {
         Self {
             db,
             circuit_breakers: Arc::new(RwLock::new(HashMap::new())),
+            model_failover_cursors: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -34,12 +38,14 @@ impl ProviderRouter {
     /// 返回按优先级排序的可用供应商列表：
     /// - 故障转移关闭时：仅返回当前供应商
     /// - 故障转移开启时：仅使用故障转移队列，按队列顺序依次尝试（P1 → P2 → ...）
-    pub async fn select_providers(&self, app_type: &str) -> Result<Vec<Provider>, AppError> {
+    pub async fn select_providers(
+        &self,
+        app_type: &str,
+        model_key: Option<&str>,
+    ) -> Result<Vec<Provider>, AppError> {
         let mut result = Vec::new();
-        let mut total_providers = 0usize;
         let mut circuit_open_count = 0usize;
 
-        // 检查该应用的自动故障转移开关是否开启（从 proxy_config 表读取）
         let auto_failover_enabled = match self.db.get_proxy_config_for_app(app_type).await {
             Ok(config) => config.auto_failover_enabled,
             Err(e) => {
@@ -47,51 +53,103 @@ impl ProviderRouter {
                 false
             }
         };
+        let routing_settings = self.db.get_claude_model_routing_settings()?;
+        let model_key = model_key.map(str::to_string);
+        let is_claude_model_context = app_type == "claude" && model_key.is_some();
+        let use_model_failover = is_claude_model_context && routing_settings.model_failover_enabled;
+        let use_model_routing = is_claude_model_context && routing_settings.route_enabled;
 
-        if auto_failover_enabled {
-            // 故障转移开启：仅按队列顺序依次尝试（P1 → P2 → ...）
-            let all_providers = self.db.get_all_providers(app_type)?;
+        let all_providers = self.db.get_all_providers(app_type)?;
 
-            // 使用 DAO 返回的排序结果，确保和前端展示一致
-            let ordered_ids: Vec<String> = self
+        let current_id = AppType::from_str(app_type)
+            .ok()
+            .and_then(|app_enum| {
+                crate::settings::get_effective_current_provider(&self.db, &app_enum)
+                    .ok()
+                    .flatten()
+            })
+            .or_else(|| self.db.get_current_provider(app_type).ok().flatten());
+
+        let mut ordered_ids: Vec<String> = Vec::new();
+        let model_policy = if is_claude_model_context {
+            self.db
+                .get_claude_model_route_policy(model_key.as_deref().unwrap_or("unknown"))
+                .ok()
+        } else {
+            None
+        };
+
+        if use_model_failover {
+            ordered_ids = self
+                .db
+                .get_failover_queue_for_model(app_type, model_key.as_deref().unwrap_or("unknown"))?
+                .into_iter()
+                .map(|item| item.provider_id)
+                .collect();
+            if !ordered_ids.is_empty() {
+                let mode = model_policy
+                    .as_ref()
+                    .map(|policy| policy.model_failover_mode.as_str())
+                    .unwrap_or("random");
+                self.apply_model_failover_mode(
+                    app_type,
+                    model_key.as_deref().unwrap_or("unknown"),
+                    &mut ordered_ids,
+                    mode,
+                )
+                .await;
+            }
+        }
+        if ordered_ids.is_empty() && auto_failover_enabled {
+            ordered_ids = self
                 .db
                 .get_failover_queue(app_type)?
                 .into_iter()
                 .map(|item| item.provider_id)
                 .collect();
+        }
+        if use_model_routing {
+            if let Some(policy) = model_policy {
+                if policy.enabled {
+                    if let Some(default_id) = policy.default_provider_id {
+                        let mut reordered = vec![default_id.clone()];
+                        reordered.extend(ordered_ids.into_iter().filter(|id| id != &default_id));
+                        ordered_ids = reordered;
+                    }
 
-            total_providers = ordered_ids.len();
-
-            for provider_id in ordered_ids {
-                let Some(provider) = all_providers.get(&provider_id).cloned() else {
-                    continue;
-                };
-
-                let circuit_key = format!("{app_type}:{}", provider.id);
-                let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
-
-                if breaker.is_available().await {
-                    result.push(provider);
-                } else {
-                    circuit_open_count += 1;
+                    if !policy.model_failover_enabled {
+                        ordered_ids = ordered_ids.into_iter().take(1).collect();
+                    }
                 }
             }
-        } else {
-            // 故障转移关闭：仅使用当前供应商，跳过熔断器检查
-            let current_id = AppType::from_str(app_type)
-                .ok()
-                .and_then(|app_enum| {
-                    crate::settings::get_effective_current_provider(&self.db, &app_enum)
-                        .ok()
-                        .flatten()
-                })
-                .or_else(|| self.db.get_current_provider(app_type).ok().flatten());
+        }
 
+        if ordered_ids.is_empty() {
             if let Some(current_id) = current_id {
-                if let Some(current) = self.db.get_provider_by_id(&current_id, app_type)? {
-                    total_providers = 1;
-                    result.push(current);
-                }
+                ordered_ids.push(current_id);
+            }
+        }
+
+        if ordered_ids.is_empty() {
+            ordered_ids = all_providers.keys().cloned().collect();
+            ordered_ids.sort();
+        }
+
+        let total_providers = ordered_ids.len();
+
+        for provider_id in ordered_ids {
+            let Some(provider) = all_providers.get(&provider_id).cloned() else {
+                continue;
+            };
+
+            // 统一按 provider 维度熔断：任一模型类别失败后，该 provider 在所有模型备用链中都会被跳过
+            let circuit_key = Self::circuit_key(app_type, &provider.id, None);
+            let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
+
+            if breaker.is_available().await {
+                result.push(provider);
+            } else {
+                circuit_open_count += 1;
             }
         }
 
@@ -108,6 +166,34 @@ impl ProviderRouter {
         Ok(result)
     }
 
+    async fn apply_model_failover_mode(
+        &self,
+        app_type: &str,
+        model_key: &str,
+        ordered_ids: &mut Vec<String>,
+        mode: &str,
+    ) {
+        if ordered_ids.len() <= 1 {
+            return;
+        }
+        match mode {
+            "random" => {
+                let mut rng = rand::rng();
+                ordered_ids.shuffle(&mut rng);
+            }
+            _ => {
+                let cursor_key = format!("{app_type}:{model_key}");
+                let mut cursors = self.model_failover_cursors.write().await;
+                let cursor = cursors.entry(cursor_key).or_insert(0);
+                let shift = *cursor % ordered_ids.len();
+                if shift > 0 {
+                    ordered_ids.rotate_left(shift);
+                }
+                *cursor = (*cursor + 1) % ordered_ids.len();
+            }
+        }
+    }
+
     /// 请求执行前获取熔断器“放行许可”
     ///
     /// - Closed：直接放行
@@ -116,8 +202,13 @@ impl ProviderRouter {
     ///
     /// 注意：调用方必须在请求结束后通过 `record_result()` 释放 HalfOpen 名额，
     /// 否则会导致该 Provider 长时间无法进入探测状态。
-    pub async fn allow_provider_request(&self, provider_id: &str, app_type: &str) -> AllowResult {
-        let circuit_key = format!("{app_type}:{provider_id}");
+    pub async fn allow_provider_request(
+        &self,
+        provider_id: &str,
+        app_type: &str,
+        model_key: Option<&str>,
+    ) -> AllowResult {
+        let circuit_key = Self::circuit_key(app_type, provider_id, model_key);
         let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
         breaker.allow_request().await
     }
@@ -127,6 +218,7 @@ impl ProviderRouter {
         &self,
         provider_id: &str,
         app_type: &str,
+        model_key: Option<&str>,
         used_half_open_permit: bool,
         success: bool,
         error_msg: Option<String>,
@@ -138,7 +230,7 @@ impl ProviderRouter {
         };
 
         // 2. 更新熔断器状态
-        let circuit_key = format!("{app_type}:{provider_id}");
+        let circuit_key = Self::circuit_key(app_type, provider_id, model_key);
         let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
 
         if success {
@@ -148,15 +240,40 @@ impl ProviderRouter {
         }
 
         // 3. 更新数据库健康状态（使用配置的阈值）
-        self.db
-            .update_provider_health_with_threshold(
-                provider_id,
-                app_type,
-                success,
-                error_msg.clone(),
-                failure_threshold,
-            )
-            .await?;
+        if app_type == "claude" {
+            if let Some(model_key) = model_key {
+                self.db
+                    .update_provider_health_for_model_with_threshold(
+                        provider_id,
+                        app_type,
+                        model_key,
+                        success,
+                        error_msg.clone(),
+                        failure_threshold,
+                    )
+                    .await?;
+            } else {
+                self.db
+                    .update_provider_health_with_threshold(
+                        provider_id,
+                        app_type,
+                        success,
+                        error_msg.clone(),
+                        failure_threshold,
+                    )
+                    .await?;
+            }
+        } else {
+            self.db
+                .update_provider_health_with_threshold(
+                    provider_id,
+                    app_type,
+                    success,
+                    error_msg.clone(),
+                    failure_threshold,
+                )
+                .await?;
+        }
 
         Ok(())
     }
@@ -170,8 +287,13 @@ impl ProviderRouter {
     }
 
     /// 重置指定供应商的熔断器
-    pub async fn reset_provider_breaker(&self, provider_id: &str, app_type: &str) {
-        let circuit_key = format!("{app_type}:{provider_id}");
+    pub async fn reset_provider_breaker(
+        &self,
+        provider_id: &str,
+        app_type: &str,
+        model_key: Option<&str>,
+    ) {
+        let circuit_key = Self::circuit_key(app_type, provider_id, model_key);
         self.reset_circuit_breaker(&circuit_key).await;
     }
 
@@ -183,12 +305,13 @@ impl ProviderRouter {
         &self,
         provider_id: &str,
         app_type: &str,
+        model_key: Option<&str>,
         used_half_open_permit: bool,
     ) {
         if !used_half_open_permit {
             return;
         }
-        let circuit_key = format!("{app_type}:{provider_id}");
+        let circuit_key = Self::circuit_key(app_type, provider_id, model_key);
         let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
         breaker.release_half_open_permit();
     }
@@ -207,8 +330,9 @@ impl ProviderRouter {
         &self,
         provider_id: &str,
         app_type: &str,
+        model_key: Option<&str>,
     ) -> Option<crate::proxy::circuit_breaker::CircuitBreakerStats> {
-        let circuit_key = format!("{app_type}:{provider_id}");
+        let circuit_key = Self::circuit_key(app_type, provider_id, model_key);
         let breakers = self.circuit_breakers.read().await;
 
         if let Some(breaker) = breakers.get(&circuit_key) {
@@ -255,6 +379,10 @@ impl ProviderRouter {
         breakers.insert(key.to_string(), breaker.clone());
 
         breaker
+    }
+
+    fn circuit_key(app_type: &str, provider_id: &str, _model_key: Option<&str>) -> String {
+        format!("{app_type}:{provider_id}")
     }
 }
 
@@ -334,7 +462,7 @@ mod tests {
         db.add_to_failover_queue("claude", "b").unwrap();
 
         let router = ProviderRouter::new(db.clone());
-        let providers = router.select_providers("claude").await.unwrap();
+        let providers = router.select_providers("claude", None).await.unwrap();
 
         assert_eq!(providers.len(), 1);
         assert_eq!(providers[0].id, "a");
@@ -367,7 +495,7 @@ mod tests {
         db.update_proxy_config_for_app(config).await.unwrap();
 
         let router = ProviderRouter::new(db.clone());
-        let providers = router.select_providers("claude").await.unwrap();
+        let providers = router.select_providers("claude", None).await.unwrap();
 
         assert_eq!(providers.len(), 2);
         // 故障转移开启时：仅按队列顺序选择（忽略当前供应商）
@@ -399,7 +527,7 @@ mod tests {
         db.update_proxy_config_for_app(config).await.unwrap();
 
         let router = ProviderRouter::new(db.clone());
-        let providers = router.select_providers("claude").await.unwrap();
+        let providers = router.select_providers("claude", None).await.unwrap();
 
         assert_eq!(providers.len(), 1);
         assert_eq!(providers[0].id, "b");
@@ -438,14 +566,14 @@ mod tests {
         let router = ProviderRouter::new(db.clone());
 
         router
-            .record_result("b", "claude", false, false, Some("fail".to_string()))
+            .record_result("b", "claude", None, false, false, Some("fail".to_string()))
             .await
             .unwrap();
 
-        let providers = router.select_providers("claude").await.unwrap();
+        let providers = router.select_providers("claude", None).await.unwrap();
         assert_eq!(providers.len(), 2);
 
-        assert!(router.allow_provider_request("b", "claude").await.allowed);
+        assert!(router.allow_provider_request("b", "claude", None).await.allowed);
     }
 
     #[tokio::test]
@@ -477,27 +605,437 @@ mod tests {
 
         // 触发熔断：1 次失败
         router
-            .record_result("a", "claude", false, false, Some("fail".to_string()))
+            .record_result("a", "claude", None, false, false, Some("fail".to_string()))
             .await
             .unwrap();
 
         // 第一次请求：获取 HalfOpen 探测名额
-        let first = router.allow_provider_request("a", "claude").await;
+        let first = router.allow_provider_request("a", "claude", None).await;
         assert!(first.allowed);
         assert!(first.used_half_open_permit);
 
         // 第二次请求应被拒绝（名额已被占用）
-        let second = router.allow_provider_request("a", "claude").await;
+        let second = router.allow_provider_request("a", "claude", None).await;
         assert!(!second.allowed);
 
         // 使用 release_permit_neutral 释放名额（不影响健康统计）
         router
-            .release_permit_neutral("a", "claude", first.used_half_open_permit)
+            .release_permit_neutral("a", "claude", None, first.used_half_open_permit)
             .await;
 
         // 第三次请求应被允许（名额已释放）
-        let third = router.allow_provider_request("a", "claude").await;
+        let third = router.allow_provider_request("a", "claude", None).await;
         assert!(third.allowed);
         assert!(third.used_half_open_permit);
     }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_model_queue_preferred_when_model_failover_enabled() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+
+        let provider_a =
+            Provider::with_id("a".to_string(), "Provider A".to_string(), json!({}), None);
+        let provider_b =
+            Provider::with_id("b".to_string(), "Provider B".to_string(), json!({}), None);
+        let provider_c =
+            Provider::with_id("c".to_string(), "Provider C".to_string(), json!({}), None);
+
+        db.save_provider("claude", &provider_a).unwrap();
+        db.save_provider("claude", &provider_b).unwrap();
+        db.save_provider("claude", &provider_c).unwrap();
+
+        // 通用队列: a -> b
+        db.set_failover_queue_for_model("claude", "haiku", &["b".to_string(), "c".to_string()])
+            .unwrap();
+        db.add_to_failover_queue("claude", "a").unwrap();
+        db.add_to_failover_queue("claude", "b").unwrap();
+
+        // 开启模型级故障转移
+        db.set_claude_model_routing_settings(&crate::proxy::types::ClaudeModelRoutingSettings {
+            route_enabled: true,
+            model_failover_enabled: true,
+        })
+        .unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+        let providers = router
+            .select_providers("claude", Some("haiku"))
+            .await
+            .unwrap();
+
+        assert_eq!(providers.len(), 2);
+        assert_eq!(providers[0].id, "b");
+        assert_eq!(providers[1].id, "c");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_claude_model_context_circuit_shared_across_model_keys() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+
+        let provider_a =
+            Provider::with_id("a".to_string(), "Provider A".to_string(), json!({}), None);
+        let provider_b =
+            Provider::with_id("b".to_string(), "Provider B".to_string(), json!({}), None);
+
+        db.save_provider("claude", &provider_a).unwrap();
+        db.save_provider("claude", &provider_b).unwrap();
+        db.add_to_failover_queue("claude", "a").unwrap();
+        db.add_to_failover_queue("claude", "b").unwrap();
+
+        let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
+        config.auto_failover_enabled = true;
+        config.circuit_failure_threshold = 1;
+        config.circuit_timeout_seconds = 600;
+        db.update_proxy_config_for_app(config).await.unwrap();
+
+        // 只开启模型路由（不启用模型级故障转移）
+        db.set_claude_model_routing_settings(&crate::proxy::types::ClaudeModelRoutingSettings {
+            route_enabled: true,
+            model_failover_enabled: false,
+        })
+        .unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+
+        // 让 provider a 在 sonnet 维度失败
+        router
+            .record_result(
+                "a",
+                "claude",
+                Some("sonnet"),
+                false,
+                false,
+                Some("sonnet failed".to_string()),
+            )
+            .await
+            .unwrap();
+
+        let sonnet_providers = router
+            .select_providers("claude", Some("sonnet"))
+            .await
+            .unwrap();
+        assert_eq!(
+            sonnet_providers
+                .iter()
+                .map(|p| p.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["b"]
+        );
+
+        // 同一 provider 的其它模型（haiku）也会被跳过
+        let haiku_providers = router
+            .select_providers("claude", Some("haiku"))
+            .await
+            .unwrap();
+        assert_eq!(
+            haiku_providers
+                .iter()
+                .map(|p| p.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["b"]
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_model_failover_round_robin_mode_rotates_order() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+
+        let provider_a =
+            Provider::with_id("a".to_string(), "Provider A".to_string(), json!({}), None);
+        let provider_b =
+            Provider::with_id("b".to_string(), "Provider B".to_string(), json!({}), None);
+        let provider_c =
+            Provider::with_id("c".to_string(), "Provider C".to_string(), json!({}), None);
+
+        db.save_provider("claude", &provider_a).unwrap();
+        db.save_provider("claude", &provider_b).unwrap();
+        db.save_provider("claude", &provider_c).unwrap();
+        db.set_failover_queue_for_model(
+            "claude",
+            "haiku",
+            &["a".to_string(), "b".to_string(), "c".to_string()],
+        )
+        .unwrap();
+        db.set_claude_model_routing_settings(&crate::proxy::types::ClaudeModelRoutingSettings {
+            route_enabled: true,
+            model_failover_enabled: true,
+        })
+        .unwrap();
+        db.upsert_claude_model_route_policy(&crate::proxy::types::ClaudeModelRoutePolicy {
+            app_type: "claude".to_string(),
+            model_key: "haiku".to_string(),
+            enabled: true,
+            default_provider_id: None,
+            model_failover_enabled: true,
+            model_failover_mode: "round_robin".to_string(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        })
+        .unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+        let first = router.select_providers("claude", Some("haiku")).await.unwrap();
+        let second = router.select_providers("claude", Some("haiku")).await.unwrap();
+        let third = router.select_providers("claude", Some("haiku")).await.unwrap();
+
+        assert_eq!(
+            first.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b", "c"]
+        );
+        assert_eq!(
+            second.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            vec!["b", "c", "a"]
+        );
+        assert_eq!(
+            third.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            vec!["c", "a", "b"]
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_model_failover_random_mode_shuffles_order() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+
+        let provider_a =
+            Provider::with_id("a".to_string(), "Provider A".to_string(), json!({}), None);
+        let provider_b =
+            Provider::with_id("b".to_string(), "Provider B".to_string(), json!({}), None);
+        let provider_c =
+            Provider::with_id("c".to_string(), "Provider C".to_string(), json!({}), None);
+
+        db.save_provider("claude", &provider_a).unwrap();
+        db.save_provider("claude", &provider_b).unwrap();
+        db.save_provider("claude", &provider_c).unwrap();
+        db.set_failover_queue_for_model(
+            "claude",
+            "haiku",
+            &["a".to_string(), "b".to_string(), "c".to_string()],
+        )
+        .unwrap();
+        db.set_claude_model_routing_settings(&crate::proxy::types::ClaudeModelRoutingSettings {
+            route_enabled: true,
+            model_failover_enabled: true,
+        })
+        .unwrap();
+        db.upsert_claude_model_route_policy(&crate::proxy::types::ClaudeModelRoutePolicy {
+            app_type: "claude".to_string(),
+            model_key: "haiku".to_string(),
+            enabled: true,
+            default_provider_id: None,
+            model_failover_enabled: true,
+            model_failover_mode: "random".to_string(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        })
+        .unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+        let mut seen_orders = std::collections::HashSet::new();
+
+        for _ in 0..20 {
+            let providers = router.select_providers("claude", Some("haiku")).await.unwrap();
+            let order = providers.iter().map(|p| p.id.clone()).collect::<Vec<_>>();
+            let mut sorted = order.clone();
+            sorted.sort();
+            assert_eq!(sorted, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+            seen_orders.insert(order.join(","));
+        }
+
+        assert!(seen_orders.len() > 1);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_model_routing_policy_prioritizes_default_provider() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+
+        let provider_a =
+            Provider::with_id("a".to_string(), "Provider A".to_string(), json!({}), None);
+        let provider_b =
+            Provider::with_id("b".to_string(), "Provider B".to_string(), json!({}), None);
+
+        db.save_provider("claude", &provider_a).unwrap();
+        db.save_provider("claude", &provider_b).unwrap();
+
+        db.add_to_failover_queue("claude", "a").unwrap();
+        db.add_to_failover_queue("claude", "b").unwrap();
+
+        let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
+        config.auto_failover_enabled = true;
+        db.update_proxy_config_for_app(config).await.unwrap();
+
+        db.set_claude_model_routing_settings(&crate::proxy::types::ClaudeModelRoutingSettings {
+            route_enabled: true,
+            model_failover_enabled: true,
+        })
+        .unwrap();
+
+        db.upsert_claude_model_route_policy(&crate::proxy::types::ClaudeModelRoutePolicy {
+            app_type: "claude".to_string(),
+            model_key: "sonnet".to_string(),
+            enabled: true,
+            default_provider_id: Some("b".to_string()),
+            model_failover_enabled: true,
+            model_failover_mode: "round_robin".to_string(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        })
+        .unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+        let providers = router
+            .select_providers("claude", Some("sonnet"))
+            .await
+            .unwrap();
+
+        assert_eq!(providers.len(), 2);
+        assert_eq!(providers[0].id, "b");
+        assert_eq!(providers[1].id, "a");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_model_queue_falls_back_to_upstream() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+
+        let provider_a =
+            Provider::with_id("a".to_string(), "Provider A".to_string(), json!({}), None);
+        let provider_b =
+            Provider::with_id("b".to_string(), "Provider B".to_string(), json!({}), None);
+
+        db.save_provider("claude", &provider_a).unwrap();
+        db.save_provider("claude", &provider_b).unwrap();
+
+        // 模型队列为空时，回退到上游全局队列 b
+        db.add_to_failover_queue("claude", "b").unwrap();
+        let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
+        config.auto_failover_enabled = true;
+        db.update_proxy_config_for_app(config).await.unwrap();
+
+        db.set_claude_model_routing_settings(&crate::proxy::types::ClaudeModelRoutingSettings {
+            route_enabled: true,
+            model_failover_enabled: true,
+        })
+        .unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+        let providers = router
+            .select_providers("claude", Some("haiku"))
+            .await
+            .unwrap();
+
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].id, "b");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_mixed_chain_ignored_even_when_auto_failover_enabled() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+
+        let provider_a =
+            Provider::with_id("a".to_string(), "Provider A".to_string(), json!({}), None);
+        let provider_b =
+            Provider::with_id("b".to_string(), "Provider B".to_string(), json!({}), None);
+        let provider_c =
+            Provider::with_id("c".to_string(), "Provider C".to_string(), json!({}), None);
+
+        db.save_provider("claude", &provider_a).unwrap();
+        db.save_provider("claude", &provider_b).unwrap();
+        db.save_provider("claude", &provider_c).unwrap();
+
+        // route_mode 展开结果使用模型队列：b
+        db.set_claude_model_routing_settings(&crate::proxy::types::ClaudeModelRoutingSettings {
+            route_enabled: true,
+            model_failover_enabled: true,
+        })
+        .unwrap();
+        db.set_failover_queue_for_model("claude", "haiku", &["b".to_string()])
+            .unwrap();
+
+        // 混合链：P1=a, P2=route_mode, P3=c
+        db.set_fork_failover_chain(
+            "claude",
+            &[
+                crate::database::ForkFailoverChainItem {
+                    node_type: "provider".to_string(),
+                    node_id: "a".to_string(),
+                    provider_name: None,
+                    sort_index: Some(0),
+                },
+                crate::database::ForkFailoverChainItem {
+                    node_type: "route_mode".to_string(),
+                    node_id: "route_mode".to_string(),
+                    provider_name: None,
+                    sort_index: Some(1),
+                },
+                crate::database::ForkFailoverChainItem {
+                    node_type: "provider".to_string(),
+                    node_id: "c".to_string(),
+                    provider_name: None,
+                    sort_index: Some(2),
+                },
+            ],
+        )
+        .unwrap();
+        let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
+        config.auto_failover_enabled = true;
+        db.update_proxy_config_for_app(config).await.unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+        let providers = router
+            .select_providers("claude", Some("haiku"))
+            .await
+            .unwrap();
+
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].id, "b");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_mixed_chain_ignored_when_auto_failover_disabled() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+
+        let provider_a =
+            Provider::with_id("a".to_string(), "Provider A".to_string(), json!({}), None);
+        let provider_b =
+            Provider::with_id("b".to_string(), "Provider B".to_string(), json!({}), None);
+
+        db.save_provider("claude", &provider_a).unwrap();
+        db.save_provider("claude", &provider_b).unwrap();
+        db.set_current_provider("claude", "a").unwrap();
+
+        db.set_fork_failover_chain(
+            "claude",
+            &[crate::database::ForkFailoverChainItem {
+                node_type: "provider".to_string(),
+                node_id: "b".to_string(),
+                provider_name: None,
+                sort_index: Some(0),
+            }],
+        )
+        .unwrap();
+
+        // 自动故障转移关闭时，混合链不应生效
+        let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
+        config.auto_failover_enabled = false;
+        db.update_proxy_config_for_app(config).await.unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+        let providers = router.select_providers("claude", None).await.unwrap();
+
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].id, "a");
+    }
 }
+

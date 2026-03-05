@@ -6,6 +6,8 @@ import type {
   ProxyTakeoverStatus,
   GlobalProxyConfig,
   AppProxyConfig,
+  ClaudeModelRoutingSettings,
+  ClaudeModelRoutePolicy,
 } from "@/types/proxy";
 
 export const proxyApi = {
@@ -91,6 +93,28 @@ export const proxyApi = {
   // 更新指定应用的代理配置
   async updateProxyConfigForApp(config: AppProxyConfig): Promise<void> {
     return invoke("update_proxy_config_for_app", { config });
+  },
+
+  // ========== Claude 模型路由（Fork 扩展） ==========
+
+  async getClaudeModelRoutingSettings(): Promise<ClaudeModelRoutingSettings> {
+    return invoke("get_claude_model_routing_settings");
+  },
+
+  async setClaudeModelRoutingSettings(
+    settings: ClaudeModelRoutingSettings,
+  ): Promise<void> {
+    return invoke("set_claude_model_routing_settings", { settings });
+  },
+
+  async listClaudeModelRoutePolicies(): Promise<ClaudeModelRoutePolicy[]> {
+    return invoke("list_claude_model_route_policies");
+  },
+
+  async upsertClaudeModelRoutePolicy(
+    policy: ClaudeModelRoutePolicy,
+  ): Promise<void> {
+    return invoke("upsert_claude_model_route_policy", { policy });
   },
 
   // ========== 计费默认配置 API ==========

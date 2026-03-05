@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import type { Provider } from "@/types";
 import { ProviderList } from "@/components/providers/ProviderList";
 
@@ -23,6 +23,7 @@ vi.mock("@/components/providers/ProviderCard", () => ({
       onDelete,
       onDuplicate,
       onConfigureUsage,
+      onOpenWebsite,
     } = props;
 
     return (
@@ -57,6 +58,13 @@ vi.mock("@/components/providers/ProviderCard", () => ({
         >
           delete
         </button>
+        <button
+          data-testid={`open-${provider.id}`}
+          onClick={() => onOpenWebsite(provider.websiteUrl ?? "")}
+        >
+          open
+        </button>
+        <span data-testid={`website-${provider.id}`}>{provider.websiteUrl ?? ""}</span>
         <span data-testid={`is-current-${provider.id}`}>
           {props.isCurrent ? "current" : "inactive"}
         </span>
@@ -224,24 +232,32 @@ describe("ProviderList Component", () => {
       />,
     );
 
-    // Verify sort order
-    expect(providerCardRenderSpy).toHaveBeenCalledTimes(2);
-    expect(providerCardRenderSpy.mock.calls[0][0].provider.id).toBe("b");
-    expect(providerCardRenderSpy.mock.calls[1][0].provider.id).toBe("a");
+    // Verify sort order (ignore Claude route virtual card)
+    const providerCardCalls = providerCardRenderSpy.mock.calls.map(
+      (call) =>
+        call[0] as {
+          provider?: { id?: string };
+          isCurrent?: boolean;
+          dragHandleProps?: { attributes?: Record<string, unknown> };
+        },
+    );
+    const regularProviderCalls = providerCardCalls.filter(
+      (props) => props.provider?.id !== "__claude_route_mode_virtual__",
+    );
+
+    expect(regularProviderCalls).toHaveLength(2);
+    expect(regularProviderCalls[0].provider?.id).toBe("b");
+    expect(regularProviderCalls[1].provider?.id).toBe("a");
 
     // Verify current provider marker
-    expect(providerCardRenderSpy.mock.calls[0][0].isCurrent).toBe(true);
+    expect(regularProviderCalls[0].isCurrent).toBe(true);
 
     // Drag attributes from useSortable
     expect(
-      providerCardRenderSpy.mock.calls[0][0].dragHandleProps?.attributes[
-      "data-dnd-id"
-      ],
+      regularProviderCalls[0].dragHandleProps?.attributes?.["data-dnd-id"],
     ).toBe("b");
     expect(
-      providerCardRenderSpy.mock.calls[1][0].dragHandleProps?.attributes[
-      "data-dnd-id"
-      ],
+      regularProviderCalls[1].dragHandleProps?.attributes?.["data-dnd-id"],
     ).toBe("a");
 
     // Trigger action buttons
@@ -305,5 +321,58 @@ describe("ProviderList Component", () => {
     expect(
       screen.getByText("No providers match your search."),
     ).toBeInTheDocument();
+  });
+
+  it("auto-collapses Claude route card when switching provider while proxy is running", () => {
+    const providerA = createProvider({ id: "a", name: "A" });
+    const providerB = createProvider({ id: "b", name: "B" });
+
+    useDragSortMock.mockReturnValue({
+      sortedProviders: [providerA, providerB],
+      sensors: [],
+      handleDragEnd: vi.fn(),
+    });
+
+    function Harness() {
+      const [currentProviderId, setCurrentProviderId] = useState("a");
+
+      return (
+        <>
+          <button
+            data-testid="change-provider"
+            onClick={() => setCurrentProviderId("b")}
+          >
+            change
+          </button>
+          <ProviderList
+            providers={{ a: providerA, b: providerB }}
+            currentProviderId={currentProviderId}
+            appId="claude"
+            onSwitch={vi.fn()}
+            onEdit={vi.fn()}
+            onDelete={vi.fn()}
+            onDuplicate={vi.fn()}
+            onOpenWebsite={vi.fn()}
+            isProxyRunning
+            isProxyTakeover
+          />
+        </>
+      );
+    }
+
+    renderWithQueryClient(<Harness />);
+
+    const collapsedLabel =
+      screen.getByTestId("website-__claude_route_mode_virtual__").textContent ?? "";
+
+    fireEvent.click(screen.getByTestId("open-__claude_route_mode_virtual__"));
+    expect(
+      screen.getByTestId("website-__claude_route_mode_virtual__").textContent,
+    ).not.toBe(collapsedLabel);
+
+    fireEvent.click(screen.getByTestId("change-provider"));
+    expect(
+      screen.getByTestId("website-__claude_route_mode_virtual__").textContent,
+    ).toBe(collapsedLabel);
   });
 });

@@ -214,7 +214,10 @@ export function AutoFailoverConfigPanel({
   const isDisabled = disabled || updateConfig.isPending;
 
   return (
-    <div className="border-0 rounded-none shadow-none bg-transparent">
+    <div
+      id={`auto-failover-config-${appType}`}
+      className="border-0 rounded-none shadow-none bg-transparent scroll-mt-24"
+    >
       <div className="space-y-4">
         {error && (
           <Alert variant="destructive">

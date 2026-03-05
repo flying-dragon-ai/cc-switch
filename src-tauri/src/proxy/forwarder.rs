@@ -19,6 +19,7 @@ use crate::{app_config::AppType, provider::Provider};
 use reqwest::Response;
 use serde_json::Value;
 use std::sync::Arc;
+use tauri::Emitter;
 use tokio::sync::RwLock;
 
 /// Headers 黑名单 - 不透传到上游的 Headers
@@ -127,6 +128,33 @@ impl RequestForwarder {
         }
     }
 
+    async fn emit_model_retry_status(
+        &self,
+        app_type: &str,
+        model_key: Option<&str>,
+        retry_count: usize,
+    ) {
+        // 仅 Claude 模型路由场景需要该事件
+        if app_type != "claude" {
+            return;
+        }
+        let Some(model_key) = model_key else {
+            return;
+        };
+        let Some(app) = self.app_handle.as_ref() else {
+            return;
+        };
+
+        let event_data = serde_json::json!({
+            "appType": app_type,
+            "modelKey": model_key,
+            "retryCount": retry_count
+        });
+        if let Err(e) = app.emit("model-retry-status", event_data) {
+            log::debug!("[{app_type}] 发射 model-retry-status 事件失败: {e}");
+        }
+    }
+
     /// 转发请求（带故障转移）
     ///
     /// # Arguments
@@ -138,6 +166,7 @@ impl RequestForwarder {
     pub async fn forward_with_retry(
         &self,
         app_type: &AppType,
+        model_key: Option<&str>,
         endpoint: &str,
         mut body: Value,
         headers: axum::http::HeaderMap,
@@ -174,7 +203,7 @@ impl RequestForwarder {
             } else {
                 let permit = self
                     .router
-                    .allow_provider_request(&provider.id, app_type_str)
+                    .allow_provider_request(&provider.id, app_type_str, model_key)
                     .await;
                 (permit.allowed, permit.used_half_open_permit)
             };
@@ -206,6 +235,7 @@ impl RequestForwarder {
                         .record_result(
                             &provider.id,
                             app_type_str,
+                            model_key,
                             used_half_open_permit,
                             true,
                             None,
@@ -237,9 +267,12 @@ impl RequestForwarder {
                             let pid = provider.id.clone();
                             let pname = provider.name.clone();
                             let at = app_type_str.to_string();
+                            let mk = model_key.map(str::to_string);
 
                             tokio::spawn(async move {
-                                let _ = fm.try_switch(ah.as_ref(), &at, &pid, &pname).await;
+                                let _ = fm
+                                    .try_switch(ah.as_ref(), &at, &pid, &pname, mk.as_deref())
+                                    .await;
                             });
                         }
                         // 重新计算成功率
@@ -249,6 +282,9 @@ impl RequestForwarder {
                                 * 100.0;
                         }
                     }
+
+                    // 请求成功后清零重试计数
+                    self.emit_model_retry_status(app_type_str, model_key, 0).await;
 
                     return Ok(ForwardResult {
                         response,
@@ -278,6 +314,7 @@ impl RequestForwarder {
                                     .release_permit_neutral(
                                         &provider.id,
                                         app_type_str,
+                                        model_key,
                                         used_half_open_permit,
                                     )
                                     .await;
@@ -329,6 +366,7 @@ impl RequestForwarder {
                                             .record_result(
                                                 &provider.id,
                                                 app_type_str,
+                                                model_key,
                                                 used_half_open_permit,
                                                 true,
                                                 None,
@@ -362,10 +400,17 @@ impl RequestForwarder {
                                                 let pid = provider.id.clone();
                                                 let pname = provider.name.clone();
                                                 let at = app_type_str.to_string();
+                                                let mk = model_key.map(str::to_string);
 
                                                 tokio::spawn(async move {
                                                     let _ = fm
-                                                        .try_switch(ah.as_ref(), &at, &pid, &pname)
+                                                        .try_switch(
+                                                            ah.as_ref(),
+                                                            &at,
+                                                            &pid,
+                                                            &pname,
+                                                            mk.as_deref(),
+                                                        )
                                                         .await;
                                                 });
                                             }
@@ -376,6 +421,10 @@ impl RequestForwarder {
                                                     * 100.0;
                                             }
                                         }
+
+                                        // 请求成功后清零重试计数
+                                        self.emit_model_retry_status(app_type_str, model_key, 0)
+                                            .await;
 
                                         return Ok(ForwardResult {
                                             response,
@@ -405,6 +454,7 @@ impl RequestForwarder {
                                                 .record_result(
                                                     &provider.id,
                                                     app_type_str,
+                                                    model_key,
                                                     used_half_open_permit,
                                                     false,
                                                     Some(retry_err.to_string()),
@@ -416,6 +466,7 @@ impl RequestForwarder {
                                                 .release_permit_neutral(
                                                     &provider.id,
                                                     app_type_str,
+                                                    model_key,
                                                     used_half_open_permit,
                                                 )
                                                 .await;
@@ -455,6 +506,7 @@ impl RequestForwarder {
                                     .release_permit_neutral(
                                         &provider.id,
                                         app_type_str,
+                                        model_key,
                                         used_half_open_permit,
                                     )
                                     .await;
@@ -481,6 +533,7 @@ impl RequestForwarder {
                                     .release_permit_neutral(
                                         &provider.id,
                                         app_type_str,
+                                        model_key,
                                         used_half_open_permit,
                                     )
                                     .await;
@@ -519,6 +572,7 @@ impl RequestForwarder {
                                         .record_result(
                                             &provider.id,
                                             app_type_str,
+                                            model_key,
                                             used_half_open_permit,
                                             true,
                                             None,
@@ -548,9 +602,16 @@ impl RequestForwarder {
                                             let pid = provider.id.clone();
                                             let pname = provider.name.clone();
                                             let at = app_type_str.to_string();
+                                            let mk = model_key.map(str::to_string);
                                             tokio::spawn(async move {
                                                 let _ = fm
-                                                    .try_switch(ah.as_ref(), &at, &pid, &pname)
+                                                    .try_switch(
+                                                        ah.as_ref(),
+                                                        &at,
+                                                        &pid,
+                                                        &pname,
+                                                        mk.as_deref(),
+                                                    )
                                                     .await;
                                             });
                                         }
@@ -560,6 +621,10 @@ impl RequestForwarder {
                                                 * 100.0;
                                         }
                                     }
+
+                                    // 请求成功后清零重试计数
+                                    self.emit_model_retry_status(app_type_str, model_key, 0)
+                                        .await;
 
                                     return Ok(ForwardResult {
                                         response,
@@ -585,6 +650,7 @@ impl RequestForwarder {
                                             .record_result(
                                                 &provider.id,
                                                 app_type_str,
+                                                model_key,
                                                 used_half_open_permit,
                                                 false,
                                                 Some(retry_err.to_string()),
@@ -595,6 +661,7 @@ impl RequestForwarder {
                                             .release_permit_neutral(
                                                 &provider.id,
                                                 app_type_str,
+                                                model_key,
                                                 used_half_open_permit,
                                             )
                                             .await;
@@ -622,6 +689,7 @@ impl RequestForwarder {
                             .release_permit_neutral(
                                 &provider.id,
                                 app_type_str,
+                                model_key,
                                 used_half_open_permit,
                             )
                             .await;
@@ -645,6 +713,7 @@ impl RequestForwarder {
                         .record_result(
                             &provider.id,
                             app_type_str,
+                            model_key,
                             used_half_open_permit,
                             false,
                             Some(e.to_string()),
@@ -673,6 +742,13 @@ impl RequestForwarder {
 
                             last_error = Some(e);
                             last_provider = Some(provider.clone());
+                            // 发生可重试失败：更新该模型的重试计数（失败 1 次 => 重试计数 1）
+                            self.emit_model_retry_status(
+                                app_type_str,
+                                model_key,
+                                attempted_providers,
+                            )
+                            .await;
                             // 继续尝试下一个供应商
                             continue;
                         }
@@ -927,3 +1003,5 @@ fn extract_error_message(error: &ProxyError) -> Option<String> {
         _ => Some(error.to_string()),
     }
 }
+
+

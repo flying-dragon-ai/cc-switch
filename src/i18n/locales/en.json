@@ -38,7 +38,9 @@
     "reset": "Reset",
     "actions": "Actions",
     "deleting": "Deleting...",
-    "auto": "Auto"
+    "auto": "Auto",
+    "enabled": "Enabled",
+    "notSet": "Not set"
   },
   "apiKeyInput": {
     "placeholder": "Enter API Key",
@@ -143,7 +145,11 @@
         "oauthHint": "Google official uses OAuth personal authentication, no need to fill in API Key. The browser will automatically open for login on first use.",
         "apiKeyPlaceholder": "Enter Gemini API Key"
       }
-    }
+    },
+    "quickMoveAlreadyBottom": "This provider is already at the bottom",
+    "quickMoveAlreadyTop": "This provider is already at the target position",
+    "quickMoveBottom": "Move to Bottom",
+    "quickMoveTop": "Move to Top"
   },
   "notifications": {
     "providerAdded": "Provider added",
@@ -274,6 +280,13 @@
           "debug": "Detailed info including SSE stream and request/response",
           "trace": "All logs, most verbose"
         }
+      },
+      "forkFailover": {
+        "description": "Configure model preference and backup order for Claude Model Routing (Model -> Provider). It takes effect after enabling in the provider list.",
+        "title": "Claude Model Routing (Model -> Provider) Configuration"
+      },
+      "modelTestConfig": {
+        "title": "Model Test Configuration"
       }
     },
     "language": "Language",
@@ -550,7 +563,8 @@
       "pricingLoadFailed": "Failed to load pricing defaults: {{error}}",
       "defaultCostMultiplierRequired": "Default multiplier is required",
       "defaultCostMultiplierInvalid": "Invalid multiplier format"
-    }
+    },
+    "saveFailedGeneric": "Save failed, please try again"
   },
   "apps": {
     "claude": "Claude",
@@ -596,7 +610,14 @@
     "daysAgo": "{{count}} days ago",
     "roleUser": "User",
     "roleSystem": "System",
-    "roleTool": "Tool"
+    "roleTool": "Tool",
+    "conversationHistory": "Conversation History",
+    "copyCommand": "Copy Command",
+    "copyMessage": "Copy Content",
+    "messageCopied": "Message copied",
+    "noResumeCommand": "This session cannot be resumed",
+    "resume": "Resume Session",
+    "resumeTooltip": "Resume this session in terminal"
   },
   "console": {
     "providerSwitchReceived": "Received provider switch event:",
@@ -691,7 +712,11 @@
     "categoryOfficial": "Official",
     "categoryCnOfficial": "Opensource Official",
     "categoryAggregation": "Aggregation",
-    "categoryThirdParty": "Third Party"
+    "categoryThirdParty": "Third Party",
+    "autoFetchModels": "Auto Fetch Models",
+    "fetchedModelCount": "Fetched {{count}} models, ready to import.",
+    "modelConfig": "Model Configuration",
+    "modelsFetched": "Fetched {{count}} models"
   },
   "endpointTest": {
     "title": "API Endpoint Management",
@@ -717,7 +742,9 @@
     "testUnavailable": "Speed test unavailable",
     "noResult": "No result returned",
     "testFailed": "Speed test failed: {{error}}",
-    "status": "Status: {{code}}"
+    "status": "Status: {{code}}",
+    "empty": "No endpoints",
+    "notTested": "Not tested"
   },
   "providerAdvanced": {
     "testConfig": "Model Test Config",
@@ -760,7 +787,10 @@
     "extractFromCurrent": "Extract from Editor",
     "extractNoCommonConfig": "No common config available to extract from editor",
     "extractFailed": "Extract failed: {{error}}",
-    "saveFailed": "Save failed: {{error}}"
+    "saveFailed": "Save failed: {{error}}",
+    "modelName": "Model Name",
+    "modelNameHint": "Specify the model to use; it will be synced to config.toml automatically.",
+    "modelNamePlaceholder": "e.g.: gpt-5-codex"
   },
   "geminiConfig": {
     "envFile": "Environment Variables (.env)",
@@ -812,7 +842,10 @@
     "noExtraOptions": "No extra options configured",
     "noModelOptions": "Model options, click + to add",
     "modelOptionKeyPlaceholder": "provider",
-    "modelOptionValuePlaceholder": "{\"order\": [\"baseten\"]}"
+    "modelOptionValuePlaceholder": "{\"order\": [\"baseten\"]}",
+    "importFetchedModels": "Import Fetched Models",
+    "importFetchedModelsResult": "Model import completed: added {{imported}}, filled names for {{updated}}.",
+    "noFetchedModels": "No models available to import. Please fetch models first."
   },
   "providerPreset": {
     "label": "Provider Preset",
@@ -905,7 +938,28 @@
     "costBreakdown": "Cost Breakdown",
     "performance": "Performance",
     "latency": "Latency",
-    "errorMessage": "Error Message"
+    "errorMessage": "Error Message",
+    "addPricing": "Add Pricing",
+    "avgCost": "Average Cost",
+    "avgLatency": "Average Latency",
+    "cacheCreationCostPerMillion": "Cache write cost (per million tokens, USD)",
+    "cacheReadCostPerMillion": "Cache read cost (per million tokens, USD)",
+    "editPricing": "Edit Pricing",
+    "inputCostPerMillion": "Input cost (per million tokens, USD)",
+    "invalidPrice": "Price must be a non-negative number",
+    "invalidTimeRange": "Please select both start and end time",
+    "invalidTimeRangeOrder": "Start time cannot be later than end time",
+    "modelId": "Model ID",
+    "modelIdRequired": "Model ID cannot be empty",
+    "never": "Never updated",
+    "outputCostPerMillion": "Output cost (per million tokens, USD)",
+    "pricingAdded": "Pricing added",
+    "pricingUpdated": "Pricing updated",
+    "requestId": "Request ID",
+    "requests": "Requests",
+    "successRate": "Success Rate",
+    "timeRangeTooLarge": "Time range is too large, please narrow it down",
+    "tokens": "Tokens"
   },
   "usageScript": {
     "title": "Configure Usage Query",
@@ -1522,7 +1576,14 @@
       "skillsPath": "Skills Path",
       "hint": "This will add the Skill repository to the list.",
       "hintDetail": "After adding, you can install specific Skills from the Skills management page."
-    }
+    },
+    "usageApiKey": "Usage API Key",
+    "usageAutoInterval": "Auto Query",
+    "usageAutoIntervalValue": "Every {{minutes}} minutes",
+    "usageBaseUrl": "Usage Query URL",
+    "usageScript": "Usage Query",
+    "usageScriptDisabled": "Disabled",
+    "usageScriptEnabled": "Enabled"
   },
   "iconPicker": {
     "search": "Search Icons",
@@ -1678,7 +1739,13 @@
       "hint": "Select apps to take over — once enabled, requests from that app will be routed through the local proxy",
       "enabled": "{{app}} takeover enabled",
       "disabled": "{{app}} takeover disabled",
-      "failed": "Failed to toggle takeover"
+      "failed": "Failed to toggle takeover",
+      "requiredForClaudeRouting": "Enable Claude proxy takeover first to use this card.",
+      "tooltip": {
+        "active": "{{app}} takeover active - {{address}}:{{port}}\nSwitching providers for this app is hot-swapped",
+        "broken": "{{app}} takeover is active, but proxy service is not running",
+        "inactive": "Take over {{app}} live configuration so requests go through the local proxy"
+      }
     },
     "failover": {
       "proxyRequired": "Proxy service must be started to configure failover",
@@ -1701,7 +1768,8 @@
       "removeFailed": "Failed to remove",
       "reorderSuccess": "Queue order updated",
       "reorderFailed": "Failed to update order",
-      "toggleFailed": "Failed to update status"
+      "toggleFailed": "Failed to update status",
+      "modelInfo": "This is an independent backup queue for the current model family and only affects this model family. If this queue is empty, the system falls back to the Claude global queue."
     },
     "autoFailover": {
       "info": "When the failover queue has multiple providers, the system will try them in priority order when requests fail. When a provider reaches the consecutive failure threshold, the circuit breaker will open and skip it temporarily.",
@@ -1728,8 +1796,76 @@
       "successThresholdLabel": "Recovery Success Threshold",
       "successThresholdExplain": "In half-open state, close circuit breaker after this many successes, making provider available again",
       "errorRateLabel": "Error Rate Threshold",
-      "errorRateExplain": "Open circuit breaker when error rate exceeds this value, even if failure threshold not reached"
-    }
+      "errorRateExplain": "Open circuit breaker when error rate exceeds this value, even if failure threshold not reached",
+      "maxRetries": "Max Retries",
+      "maxRetriesHint": "Retry attempts when requests fail (0-10)",
+      "nonStreaming": "Non-stream Timeout",
+      "nonStreamingHint": "Total timeout for non-stream requests, range 60-1200s, default 600s (10 min).",
+      "streamingFirstByte": "Streaming First-byte Timeout",
+      "streamingFirstByteHint": "Maximum wait time for the first chunk, range 1-120s, default 60s.",
+      "streamingIdle": "Streaming Idle Timeout",
+      "streamingIdleHint": "Maximum gap between chunks, range 60-600s; set 0 to disable (prevents mid-stream hangs).",
+      "timeoutSettings": "Timeout Settings"
+    },
+    "claudeModelRouting": {
+      "defaultProvider": "Preferred Provider",
+      "description": "Try model preferred provider first, then model fallback. If all fail, use global fallback.",
+      "failoverMode": "Model Fallback Mode",
+      "failoverModeRandom": "Random",
+      "failoverModeRoundRobin": "Round Robin",
+      "modelColumn": "Model",
+      "modelQueueDescription": "Tried from top to bottom. If this model has no backup list, fall back to the global backup queue.",
+      "modelQueueTitle": "Model Backup Queue",
+      "none": "Unpinned (use global default)",
+      "providerNotFound": "No matching provider found",
+      "queueDisabledHint": "Model routing is currently disabled. Go back to Provider List and enable \"Claude Model Routing (Model -> Provider)\" first.",
+      "rowRouteActive": "Preferred provider pinned",
+      "rowRouteInactive": "Unpinned (use global default)",
+      "searchProvider": "Search providers by name...",
+      "statusColumn": "Status",
+      "step2": "Preferred provider per model class",
+      "step3": "Model backup order",
+      "title": "Claude Model Routing (Custom)"
+    },
+    "logging": {
+      "disabled": "Proxy logging disabled",
+      "enabled": "Proxy logging enabled",
+      "failed": "Failed to toggle logging"
+    },
+    "mode": {
+      "bannerTitle": "Claude Model Routing (Model -> Provider)",
+      "collapseModelRoutes": "Collapse model routing details",
+      "editForkFailover": "Edit Claude routing settings",
+      "expandModelRoutes": "Expand model routing details",
+      "global": "Global Failover Mode",
+      "globalFallback": "Fallback to global mode",
+      "modelBackupEditHint": "For model backup providers, click \"Edit\" to configure them in settings.",
+      "modelFailover": "Model-level Failover Mode",
+      "modelNameForProvider": "Model: {{model}}",
+      "modelRouting": "Model-family Routing Mode",
+      "modelRoutingAndFailover": "Model-level Failover + Model-family Routing",
+      "recentSwitch": "Recent switch: {{provider}} ({{source}})",
+      "recentSwitchEmpty": "Recent switch: None",
+      "retryCount": "Failover {{count}} times",
+      "routeModeAlreadyEnabled": "\"Preferred + auto fallback\" is already enabled. Click Edit to adjust.",
+      "routeToggle": "Routing Mode",
+      "tagDefault": "Default Route",
+      "tagFailover": "Failover",
+      "virtualActionUnsupported": "Virtual provider only supports editing routing settings",
+      "virtualNotInFailoverQueue": "Claude auto failover is enabled: this card does not participate in P1/P2 queue order and is only for routing configuration.",
+      "virtualProvider": "Virtual Provider"
+    },
+    "server": {
+      "startFailed": "Failed to start proxy service: {{detail}}",
+      "started": "Proxy service started - {{address}}:{{port}}"
+    },
+    "switchSource": {
+      "failover": "Failover",
+      "failoverEnabled": "Failover enabled",
+      "manual": "Manual switch"
+    },
+    "stoppedWithRestore": "Proxy service stopped. All takeover configurations have been restored.",
+    "stopWithRestoreFailed": "Failed to stop: {{detail}}"
   },
   "streamCheck": {
     "configSaved": "Health check config saved",
@@ -1743,7 +1879,12 @@
     "maxRetries": "Max Retries",
     "degradedThreshold": "Degraded Threshold (ms)",
     "testPrompt": "Test Prompt",
-    "failedHint": "Results are for reference only. Some providers may not support this check method. Please verify manually."
+    "failedHint": "Results are for reference only. Some providers may not support this check method. Please verify manually.",
+    "error": "{{name}} check error: {{error}}",
+    "failed": "{{name}} check failed: {{error}}",
+    "testPromptHint": "One prompt per line; randomly selected during tests",
+    "operational": "{{name}} is operational ({{time}}ms)",
+    "degraded": "{{name}} is degraded ({{time}}ms)"
   },
   "proxyConfig": {
     "proxyEnabled": "Proxy Enabled",

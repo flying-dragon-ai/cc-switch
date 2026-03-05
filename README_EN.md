@@ -2,33 +2,36 @@
 
 # CC Switch (Fork)
 
-Based on [farion1231/cc-switch](https://github.com/farion1231/cc-switch), synced to upstream v3.11.0.
+Based on [farion1231/cc-switch](https://github.com/farion1231/cc-switch), synced to upstream v3.11.1.
 
-**Personal fork for my own use — it works, that's what matters.** Added/modified features are not thoroughly tested and **may contain bugs or be incompatible with upstream**. If that concerns you, please use the [official version](https://github.com/farion1231/cc-switch).
+**Personal fork for my own use — practical first.** Added or modified features have not been fully tested and **may contain bugs or be incompatible with upstream**. If this is a concern, please use the [official version](https://github.com/farion1231/cc-switch).
 
 English | [中文](README.md) | [日本語](README_JA.md) | [Changelog](CHANGELOG.md)
 
 </div>
 
-## Fork Changes vs Upstream
+## Differences from Upstream
 
-| Feature | Upstream | This Fork |
-|---------|----------|-----------|
-| Provider card | Shows name only; must open edit page to see model | Shows model name directly after provider name (e.g. `claude-sonnet-4-5-20250514`) |
-| Auto-fetch models | Not available; must manually look up and type model IDs | One-click fetch all available models; custom dropdown with full list + match sorting & highlighting |
-| Test model button | Hidden | Restored; one-click connectivity check on each provider card |
-| Test config panel | Hidden | Settings → Advanced → Model Test Config; adjustable timeout, retries, degraded threshold & prompts (multi-line, randomly picked) |
-| Tray left-click | Opens menu | Opens / minimizes main window |
+| Feature | Official Version | Personal Enhanced Fork |
+|---------|------------------|------------------------|
+| Provider card | Name only | Shows current model name after provider name |
+| Test model button | Hidden | Restored |
+| Test parameter config | Hidden | Restored, with random prompt testing support |
+| Tray left-click | Opens menu | Opens / minimizes the main window |
+| One-click pin to top (or bottom) | Not available | Available from right-click on site card |
+| Auto-fetch models | Not available | Custom dropdown, full list display + match-based sorting |
+| Model routing | Not available | Claude config supports per-site model routing for precise stability/cost control |
+| New site insertion position | Appended to end | Inserted at second position |
 
 ---
 
 ## ❤️Sponsor
 
-[![MiniMax](assets/partners/banners/minimax-en.jpeg)](https://platform.minimax.io/subscribe/coding-plan?code=ClLhgxr2je&source=link)
+[![MiniMax](assets/partners/banners/minimax-en.jpeg)](https://platform.minimaxi.com/subscribe/coding-plan?code=7kYF2VoaCn&source=link)
 
-MiniMax-M2.5 is a SOTA large language model designed for real-world productivity. Trained in a diverse range of complex real-world digital working environments, M2.5 builds upon the coding expertise of M2.1 to extend into general office work, reaching fluency in generating and operating Word, Excel, and Powerpoint files, context switching between diverse software environments, and working across different agent and human teams. Scoring 80.2% on SWE-Bench Verified, 51.3% on Multi-SWE-Bench, and 76.3% on BrowseComp, M2.5 is also more token efficient than previous generations, having been trained to optimize its actions and output through planning.
+MiniMax M2.5 reaches or refreshes industry SOTA across core productivity scenarios such as coding, tool calling, search, and office workflows. It delivers architect-level coding capability with efficient task decomposition. Compared with the previous generation, inference speed is up by 37% with better token efficiency. At 100 token/s, continuous one-hour usage costs about $1, making large-scale complex Agent deployment economically practical. It has already been deeply adopted in enterprise multi-function scenarios, accelerating the arrival of the Agent era.
 
-[Click](https://platform.minimax.io/subscribe/coding-plan?code=ClLhgxr2je&source=link) to get an exclusive 12% off the MiniMax Coding Plan!
+[Click here](https://platform.minimaxi.com/subscribe/coding-plan?code=7kYF2VoaCn&source=link) to claim an exclusive 12% off MiniMax Coding Plan offer.
 
 ---
 
@@ -89,7 +92,7 @@ Claude Code / Codex / Gemini official channels at 38% / 2% / 9% of original pric
 
 ## Features
 
-### Current Version: v3.10.2 | [Full Changelog](CHANGELOG.md) | [Release Notes](docs/release-note-v3.9.0-en.md)
+### Current Version: v3.11.1 | [Full Changelog](CHANGELOG.md) | [Release Notes](docs/release-note-v3.11.1-en.md)
 
 **v3.8.0 Major Update (2025-11-28)**
 

@@ -7,6 +7,30 @@ use crate::error::AppError;
 use rusqlite::Connection;
 
 impl Database {
+    fn ensure_forkdb_attached(conn: &Connection) -> Result<(), AppError> {
+        let mut stmt = conn
+            .prepare("PRAGMA database_list;")
+            .map_err(|e| AppError::Database(format!("读取 database_list 失败: {e}")))?;
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| AppError::Database(format!("查询 database_list 失败: {e}")))?;
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| AppError::Database(format!("遍历 database_list 失败: {e}")))?
+        {
+            let name: String = row
+                .get(1)
+                .map_err(|e| AppError::Database(format!("读取 database_list.name 失败: {e}")))?;
+            if name == "forkdb" {
+                return Ok(());
+            }
+        }
+
+        conn.execute("ATTACH DATABASE ':memory:' AS forkdb", [])
+            .map_err(|e| AppError::Database(format!("附加内存 forkdb 失败: {e}")))?;
+        Ok(())
+    }
+
     /// 创建所有数据库表
     pub(crate) fn create_tables(&self) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
@@ -15,6 +39,8 @@ impl Database {
 
     /// 在指定连接上创建表（供迁移和测试使用）
     pub(crate) fn create_tables_on_conn(conn: &Connection) -> Result<(), AppError> {
+        Self::ensure_forkdb_attached(conn)?;
+
         // 1. Providers 表
         conn.execute(
             "CREATE TABLE IF NOT EXISTS providers (
@@ -168,6 +194,159 @@ impl Database {
             PRIMARY KEY (provider_id, app_type),
             FOREIGN KEY (provider_id, app_type) REFERENCES providers(id, app_type) ON DELETE CASCADE
         )", []).map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 9.1 Fork 独立数据库基础表（与主库解耦）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.providers (
+                id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                settings_config TEXT NOT NULL,
+                website_url TEXT,
+                category TEXT,
+                created_at INTEGER,
+                sort_index INTEGER,
+                notes TEXT,
+                icon TEXT,
+                icon_color TEXT,
+                meta TEXT NOT NULL DEFAULT '{}',
+                is_current BOOLEAN NOT NULL DEFAULT 0,
+                in_failover_queue BOOLEAN NOT NULL DEFAULT 0,
+                PRIMARY KEY (id, app_type)
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.provider_endpoints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                url TEXT NOT NULL,
+                added_at INTEGER,
+                FOREIGN KEY (provider_id, app_type) REFERENCES providers(id, app_type) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // 回填主库数据到 forkdb 镜像表（历史升级/首次启用双库场景）
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO forkdb.providers (
+                id, app_type, name, settings_config, website_url, category,
+                created_at, sort_index, notes, icon, icon_color, meta, is_current, in_failover_queue
+            )
+            SELECT
+                id, app_type, name, settings_config, website_url, category,
+                created_at, sort_index, notes, icon, icon_color, meta, is_current, in_failover_queue
+            FROM main.providers",
+            [],
+        );
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO forkdb.provider_endpoints (id, provider_id, app_type, url, added_at)
+             SELECT id, provider_id, app_type, url, added_at FROM main.provider_endpoints",
+            [],
+        );
+
+        // 9.2 Claude 模型族路由策略表（Fork 扩展，放入 forkdb）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.fork_model_route_policy (
+                app_type TEXT NOT NULL,
+                model_key TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                default_provider_id TEXT,
+                model_failover_enabled INTEGER NOT NULL DEFAULT 1,
+                model_failover_mode TEXT NOT NULL DEFAULT 'random',
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (app_type, model_key)
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        let _ = conn.execute(
+            "ALTER TABLE forkdb.fork_model_route_policy
+             ADD COLUMN model_failover_mode TEXT NOT NULL DEFAULT 'random'",
+            [],
+        );
+
+        // 9.3 Claude 模型族健康状态表（Fork 扩展，放入 forkdb）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.fork_provider_health_model (
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                model_key TEXT NOT NULL,
+                is_healthy INTEGER NOT NULL DEFAULT 1,
+                consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                last_success_at TEXT,
+                last_failure_at TEXT,
+                last_error TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (provider_id, app_type, model_key),
+                FOREIGN KEY (provider_id, app_type) REFERENCES providers(id, app_type) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS forkdb.idx_fork_provider_health_model
+             ON fork_provider_health_model(app_type, model_key, is_healthy)",
+            [],
+        );
+
+        // 9.4 Claude 模型族故障转移队列表（Fork 扩展，放入 forkdb）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.fork_model_failover_queue (
+                app_type TEXT NOT NULL,
+                model_key TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                sort_index INTEGER,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (app_type, model_key, provider_id),
+                FOREIGN KEY (provider_id, app_type) REFERENCES providers(id, app_type) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS forkdb.idx_fork_model_failover_queue
+             ON fork_model_failover_queue(app_type, model_key, sort_index)",
+            [],
+        );
+
+        // 9.5 Fork 混合故障转移链（provider + route_mode 可排序）
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.fork_failover_chain (
+                app_type TEXT NOT NULL,
+                node_type TEXT NOT NULL CHECK (node_type IN ('provider', 'route_mode')),
+                node_id TEXT NOT NULL,
+                sort_index INTEGER,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (app_type, node_type, node_id)
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS forkdb.idx_fork_failover_chain
+             ON fork_failover_chain(app_type, sort_index)",
+            [],
+        );
+
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS forkdb.idx_providers_failover
+             ON providers(app_type, in_failover_queue, sort_index)",
+            [],
+        );
 
         // 10. Proxy Request Logs 表
         conn.execute("CREATE TABLE IF NOT EXISTS proxy_request_logs (
@@ -323,6 +502,19 @@ impl Database {
         let mut version = Self::get_user_version(conn)?;
 
         if version > SCHEMA_VERSION {
+            // 兼容历史 fork 版本：
+            // 旧实现曾将仅存在于 forkdb 的扩展迁移计入主库 user_version（6/7）。
+            // 为了与上游（仅支持到 5）共存，这里自动回写主库版本号到 5。
+            if matches!(version, 6 | 7) {
+                log::warn!(
+                    "检测到历史 fork 主库版本号 {version}，自动回写为 {SCHEMA_VERSION} 以兼容上游版本"
+                );
+                Self::set_user_version(conn, SCHEMA_VERSION)?;
+                version = SCHEMA_VERSION;
+            }
+        }
+
+        if version > SCHEMA_VERSION {
             conn.execute("ROLLBACK TO schema_migration;", []).ok();
             conn.execute("RELEASE schema_migration;", []).ok();
             return Err(AppError::Database(format!(
@@ -360,6 +552,16 @@ impl Database {
                         Self::migrate_v4_to_v5(conn)?;
                         Self::set_user_version(conn, 5)?;
                     }
+                    5 => {
+                        log::info!("迁移数据库从 v5 到 v6（Claude 模型族路由与模型级健康）");
+                        Self::migrate_v5_to_v6(conn)?;
+                        Self::set_user_version(conn, 6)?;
+                    }
+                    6 => {
+                        log::info!("迁移数据库从 v6 到 v7（Claude 模型族独立备选队列）");
+                        Self::migrate_v6_to_v7(conn)?;
+                        Self::set_user_version(conn, 7)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -368,6 +570,10 @@ impl Database {
                 }
                 version = Self::get_user_version(conn)?;
             }
+
+            // 历史 fork 版本曾引入过独立全局故障转移表与设置项。
+            // 这些对象已下线，这里在每次启动时做幂等清理，确保旧库不会残留无效数据。
+            Self::cleanup_legacy_fork_provider_failover_artifacts(conn)?;
             Ok(())
         })();
 
@@ -911,6 +1117,131 @@ impl Database {
         }
 
         log::info!("v4 -> v5 迁移完成：已添加计费模式与请求模型字段");
+        Ok(())
+    }
+
+    /// v5 -> v6 迁移：Claude 模型族路由与模型级健康
+    fn migrate_v5_to_v6(conn: &Connection) -> Result<(), AppError> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.fork_model_route_policy (
+                app_type TEXT NOT NULL,
+                model_key TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                default_provider_id TEXT,
+                model_failover_enabled INTEGER NOT NULL DEFAULT 1,
+                model_failover_mode TEXT NOT NULL DEFAULT 'random',
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (app_type, model_key)
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 fork_model_route_policy 失败: {e}")))?;
+        let _ = conn.execute(
+            "ALTER TABLE forkdb.fork_model_route_policy
+             ADD COLUMN model_failover_mode TEXT NOT NULL DEFAULT 'random'",
+            [],
+        );
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.fork_provider_health_model (
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                model_key TEXT NOT NULL,
+                is_healthy INTEGER NOT NULL DEFAULT 1,
+                consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                last_success_at TEXT,
+                last_failure_at TEXT,
+                last_error TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (provider_id, app_type, model_key),
+                FOREIGN KEY (provider_id, app_type) REFERENCES providers(id, app_type) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 fork_provider_health_model 失败: {e}")))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS forkdb.idx_fork_provider_health_model
+             ON fork_provider_health_model(app_type, model_key, is_healthy)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建模型健康索引失败: {e}")))?;
+
+        log::info!("v5 -> v6 迁移完成：已添加 Claude 模型族路由与模型级健康表");
+        Ok(())
+    }
+
+    /// v6 -> v7 迁移：Claude 模型族故障转移队列与混合链
+    fn migrate_v6_to_v7(conn: &Connection) -> Result<(), AppError> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.fork_model_failover_queue (
+                app_type TEXT NOT NULL,
+                model_key TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                sort_index INTEGER,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (app_type, model_key, provider_id),
+                FOREIGN KEY (provider_id, app_type) REFERENCES providers(id, app_type) ON DELETE CASCADE
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 fork_model_failover_queue 失败: {e}")))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS forkdb.idx_fork_model_failover_queue
+             ON fork_model_failover_queue(app_type, model_key, sort_index)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建模型队列索引失败: {e}")))?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS forkdb.fork_failover_chain (
+                app_type TEXT NOT NULL,
+                node_type TEXT NOT NULL CHECK (node_type IN ('provider', 'route_mode')),
+                node_id TEXT NOT NULL,
+                sort_index INTEGER,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (app_type, node_type, node_id)
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 fork_failover_chain 失败: {e}")))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS forkdb.idx_fork_failover_chain
+             ON fork_failover_chain(app_type, sort_index)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建混合链路索引失败: {e}")))?;
+
+        log::info!("v6 -> v7 迁移完成：已添加 Claude 模型族故障转移队列与混合链");
+        Ok(())
+    }
+
+    fn cleanup_legacy_fork_provider_failover_artifacts(conn: &Connection) -> Result<(), AppError> {
+        Self::ensure_forkdb_attached(conn)?;
+
+        conn.execute(
+            "DROP INDEX IF EXISTS forkdb.idx_fork_provider_failover_queue",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("删除旧索引 idx_fork_provider_failover_queue 失败: {e}")))?;
+
+        conn.execute("DROP TABLE IF EXISTS forkdb.fork_provider_failover_queue", [])
+            .map_err(|e| {
+                AppError::Database(format!("删除旧表 fork_provider_failover_queue 失败: {e}"))
+            })?;
+
+        let deleted = conn
+            .execute(
+                "DELETE FROM forkdb.settings WHERE key LIKE 'fork_provider_failover_enabled_%'",
+                [],
+            )
+            .map_err(|e| {
+                AppError::Database(format!("清理旧设置 fork_provider_failover_enabled_* 失败: {e}"))
+            })?;
+
+        log::info!("已完成旧独立全局故障转移残留清理，删除 settings 键 {deleted} 条");
         Ok(())
     }
 

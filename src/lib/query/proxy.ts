@@ -2,7 +2,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { proxyApi } from "@/lib/api/proxy";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import type { GlobalProxyConfig, AppProxyConfig } from "@/types/proxy";
+import type {
+  GlobalProxyConfig,
+  AppProxyConfig,
+  ClaudeModelRoutingSettings,
+  ClaudeModelRoutePolicy,
+} from "@/types/proxy";
 
 // ========== 代理服务器状态 Hooks ==========
 
@@ -229,6 +234,68 @@ export function useUpdateAppProxyConfig() {
       });
       queryClient.invalidateQueries({ queryKey: ["proxyConfig"] });
       queryClient.invalidateQueries({ queryKey: ["circuitBreakerConfig"] });
+    },
+    onError: (error: Error) => {
+      toast.error(
+        t("proxy.settings.toast.saveFailed", { error: error.message }),
+      );
+    },
+  });
+}
+
+// ========== Claude 模型路由（Fork 扩展） ==========
+
+export function useClaudeModelRoutingSettings(enabled = true) {
+  return useQuery({
+    queryKey: ["claudeModelRoutingSettings"],
+    queryFn: () => proxyApi.getClaudeModelRoutingSettings(),
+    enabled,
+  });
+}
+
+export function useUpdateClaudeModelRoutingSettings() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+
+  return useMutation({
+    mutationFn: (settings: ClaudeModelRoutingSettings) =>
+      proxyApi.setClaudeModelRoutingSettings(settings),
+    onSuccess: () => {
+      toast.success(
+        t("proxy.settings.toast.saved", { defaultValue: "保存成功" }),
+        { closeButton: true },
+      );
+      queryClient.invalidateQueries({ queryKey: ["claudeModelRoutingSettings"] });
+    },
+    onError: (error: Error) => {
+      toast.error(
+        t("proxy.settings.toast.saveFailed", { error: error.message }),
+      );
+    },
+  });
+}
+
+export function useClaudeModelRoutePolicies() {
+  return useQuery({
+    queryKey: ["claudeModelRoutePolicies"],
+    queryFn: () => proxyApi.listClaudeModelRoutePolicies(),
+  });
+}
+
+export function useUpsertClaudeModelRoutePolicy() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+
+  return useMutation({
+    mutationFn: (policy: ClaudeModelRoutePolicy) =>
+      proxyApi.upsertClaudeModelRoutePolicy(policy),
+    onSuccess: () => {
+      toast.success(
+        t("proxy.settings.toast.saved", { defaultValue: "保存成功" }),
+        { closeButton: true },
+      );
+      queryClient.invalidateQueries({ queryKey: ["claudeModelRoutePolicies"] });
+      queryClient.invalidateQueries({ queryKey: ["proxyStatus"] });
     },
     onError: (error: Error) => {
       toast.error(

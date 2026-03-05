@@ -121,6 +121,11 @@ pub fn get_app_config_dir() -> PathBuf {
     default_dir
 }
 
+/// 获取 Fork 扩展数据库路径（与主库同目录）
+pub fn get_fork_db_path() -> PathBuf {
+    get_app_config_dir().join("cc-switch-fork.db")
+}
+
 /// 获取应用配置文件路径
 pub fn get_app_config_path() -> PathBuf {
     get_app_config_dir().join("config.json")

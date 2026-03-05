@@ -4,6 +4,7 @@ import type {
   CircuitBreakerConfig,
   CircuitBreakerStats,
   FailoverQueueItem,
+  ForkFailoverChainItem,
 } from "@/types/proxy";
 
 export interface Provider {
@@ -66,9 +67,28 @@ export const failoverApi = {
     return invoke("get_failover_queue", { appType });
   },
 
+  // 获取模型族故障转移队列（Fork 扩展）
+  async getFailoverQueueForModel(
+    appType: string,
+    modelKey: string,
+  ): Promise<FailoverQueueItem[]> {
+    return invoke("get_failover_queue_for_model", { appType, modelKey });
+  },
+
   // 获取可添加到队列的供应商（不在队列中的）
   async getAvailableProvidersForFailover(appType: string): Promise<Provider[]> {
     return invoke("get_available_providers_for_failover", { appType });
+  },
+
+  // 获取模型族可添加供应商（Fork 扩展）
+  async getAvailableProvidersForModelFailover(
+    appType: string,
+    modelKey: string,
+  ): Promise<Provider[]> {
+    return invoke("get_available_providers_for_model_failover", {
+      appType,
+      modelKey,
+    });
   },
 
   // 添加供应商到故障转移队列
@@ -84,6 +104,19 @@ export const failoverApi = {
     return invoke("remove_from_failover_queue", { appType, providerId });
   },
 
+  // 覆盖设置模型族故障转移队列（Fork 扩展）
+  async setFailoverQueueForModel(
+    appType: string,
+    modelKey: string,
+    providerIds: string[],
+  ): Promise<void> {
+    return invoke("set_failover_queue_for_model", {
+      appType,
+      modelKey,
+      providerIds,
+    });
+  },
+
   // 获取指定应用的自动故障转移开关状态
   async getAutoFailoverEnabled(appType: string): Promise<boolean> {
     return invoke("get_auto_failover_enabled", { appType });
@@ -95,5 +128,24 @@ export const failoverApi = {
     enabled: boolean,
   ): Promise<void> {
     return invoke("set_auto_failover_enabled", { appType, enabled });
+  },
+
+  async getForkFailoverChain(appType: string): Promise<ForkFailoverChainItem[]> {
+    return invoke("get_fork_failover_chain", { appType });
+  },
+
+  async setForkFailoverChain(
+    appType: string,
+    items: ForkFailoverChainItem[],
+  ): Promise<void> {
+    return invoke("set_fork_failover_chain", { appType, items });
+  },
+
+  async getAvailableProvidersForForkFailoverChain(
+    appType: string,
+  ): Promise<Provider[]> {
+    return invoke("get_available_providers_for_fork_failover_chain", {
+      appType,
+    });
   },
 };

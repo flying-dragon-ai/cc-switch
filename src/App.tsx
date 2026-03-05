@@ -114,6 +114,7 @@ const getInitialApp = (): AppId => {
 };
 
 const VIEW_STORAGE_KEY = "cc-switch-last-view";
+const SETTINGS_PROXY_ANCHOR_KEY = "cc-switch-settings-proxy-anchor";
 const VALID_VIEWS: View[] = [
   "providers",
   "settings",
@@ -793,6 +794,16 @@ function App() {
                       onSetAsDefault={
                         activeApp === "openclaw" ? setAsDefaultModel : undefined
                       }
+                      onOpenClaudeRouteSettings={(target) => {
+                        if (target === "fork") {
+                          localStorage.setItem(
+                            SETTINGS_PROXY_ANCHOR_KEY,
+                            "forkFailover",
+                          );
+                        }
+                        setSettingsDefaultTab("proxy");
+                        setCurrentView("settings");
+                      }}
                     />
                   </motion.div>
                 </AnimatePresence>

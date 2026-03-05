@@ -43,6 +43,8 @@ export function useProxyStatus() {
     onSuccess: (info) => {
       toast.success(
         t("proxy.server.started", {
+          address: info.address,
+          port: info.port,
           defaultValue: `代理服务已启动 - ${info.address}:${info.port}`,
         }),
         { closeButton: true },
@@ -55,6 +57,7 @@ export function useProxyStatus() {
         t("common.unknown", { defaultValue: "未知错误" });
       toast.error(
         t("proxy.server.startFailed", {
+          detail,
           defaultValue: `启动代理服务失败: ${detail}`,
         }),
       );
@@ -85,6 +88,7 @@ export function useProxyStatus() {
         t("common.unknown", { defaultValue: "未知错误" });
       toast.error(
         t("proxy.stopWithRestoreFailed", {
+          detail,
           defaultValue: `停止失败: ${detail}`,
         }),
       );

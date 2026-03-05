@@ -38,7 +38,9 @@
     "reset": "リセット",
     "actions": "操作",
     "deleting": "削除中...",
-    "auto": "自動"
+    "auto": "自動",
+    "enabled": "有効",
+    "notSet": "未設定"
   },
   "apiKeyInput": {
     "placeholder": "API Key を入力",
@@ -143,7 +145,11 @@
         "oauthHint": "Google 公式は OAuth 個人認証を使用するため API Key は不要です。初回利用時にブラウザが開きます。",
         "apiKeyPlaceholder": "Gemini API Key を入力"
       }
-    }
+    },
+    "quickMoveAlreadyBottom": "このプロバイダーはすでに末尾です",
+    "quickMoveAlreadyTop": "このプロバイダーはすでに目標位置にあります",
+    "quickMoveBottom": "一番下へ移動",
+    "quickMoveTop": "一番上へ移動"
   },
   "notifications": {
     "providerAdded": "プロバイダーを追加しました",
@@ -274,6 +280,13 @@
           "debug": "SSE ストリームとリクエスト/レスポンスを含む詳細情報",
           "trace": "すべてのログ、最も詳細"
         }
+      },
+      "forkFailover": {
+        "description": "Claude モデルルーティング（モデル->プロバイダー）の優先先とバックアップ順を設定します。プロバイダー一覧で有効化すると反映されます。",
+        "title": "Claude モデルルーティング（モデル->プロバイダー）設定"
+      },
+      "modelTestConfig": {
+        "title": "モデルテスト設定"
       }
     },
     "language": "言語",
@@ -550,7 +563,8 @@
       "pricingLoadFailed": "課金設定の読み込みに失敗しました: {{error}}",
       "defaultCostMultiplierRequired": "デフォルト倍率は必須です",
       "defaultCostMultiplierInvalid": "デフォルト倍率の形式が正しくありません"
-    }
+    },
+    "saveFailedGeneric": "保存に失敗しました。もう一度お試しください"
   },
   "apps": {
     "claude": "Claude",
@@ -596,7 +610,14 @@
     "daysAgo": "{{count}}日前",
     "roleUser": "ユーザー",
     "roleSystem": "システム",
-    "roleTool": "ツール"
+    "roleTool": "ツール",
+    "conversationHistory": "会話履歴",
+    "copyCommand": "コマンドをコピー",
+    "copyMessage": "内容をコピー",
+    "messageCopied": "メッセージ内容をコピーしました",
+    "noResumeCommand": "このセッションは再開できません",
+    "resume": "セッションを再開",
+    "resumeTooltip": "このセッションをターミナルで再開"
   },
   "console": {
     "providerSwitchReceived": "プロバイダー切り替えイベントを受信:",
@@ -691,7 +712,11 @@
     "categoryOfficial": "公式",
     "categoryCnOfficial": "オープンソース公式",
     "categoryAggregation": "アグリゲーター",
-    "categoryThirdParty": "サードパーティ"
+    "categoryThirdParty": "サードパーティ",
+    "autoFetchModels": "モデルを自動取得",
+    "fetchedModelCount": "{{count}} 件のモデルを取得しました。ワンクリックでインポートできます。",
+    "modelConfig": "モデル設定",
+    "modelsFetched": "{{count}} 件のモデルを取得しました"
   },
   "endpointTest": {
     "title": "API エンドポイント管理",
@@ -717,7 +742,9 @@
     "testUnavailable": "速度テストを実行できません",
     "noResult": "結果がありません",
     "testFailed": "速度テストに失敗しました: {{error}}",
-    "status": "ステータス: {{code}}"
+    "status": "ステータス: {{code}}",
+    "empty": "エンドポイントがありません",
+    "notTested": "未テスト"
   },
   "providerAdvanced": {
     "testConfig": "モデルテスト設定",
@@ -760,7 +787,10 @@
     "extractFromCurrent": "編集内容から抽出",
     "extractNoCommonConfig": "編集内容から抽出できる共通設定がありません",
     "extractFailed": "抽出に失敗しました: {{error}}",
-    "saveFailed": "保存に失敗しました: {{error}}"
+    "saveFailed": "保存に失敗しました: {{error}}",
+    "modelName": "モデル名",
+    "modelNameHint": "使用するモデルを指定すると、config.toml に自動反映されます。",
+    "modelNamePlaceholder": "例: gpt-5-codex"
   },
   "geminiConfig": {
     "envFile": "環境変数 (.env)",
@@ -812,7 +842,10 @@
     "noExtraOptions": "追加オプションはありません",
     "noModelOptions": "モデルオプション、+ をクリックして追加",
     "modelOptionKeyPlaceholder": "provider",
-    "modelOptionValuePlaceholder": "{\"order\": [\"baseten\"]}"
+    "modelOptionValuePlaceholder": "{\"order\": [\"baseten\"]}",
+    "importFetchedModels": "取得済みモデルをインポート",
+    "importFetchedModelsResult": "モデルのインポート完了: {{imported}} 件追加、{{updated}} 件の名称を補完しました。",
+    "noFetchedModels": "インポート可能なモデルがありません。先に自動取得してください。"
   },
   "providerPreset": {
     "label": "プロバイダータイプ",
@@ -905,7 +938,28 @@
     "costBreakdown": "コスト明細",
     "performance": "パフォーマンス",
     "latency": "レイテンシー",
-    "errorMessage": "エラーメッセージ"
+    "errorMessage": "エラーメッセージ",
+    "addPricing": "価格設定を追加",
+    "avgCost": "平均コスト",
+    "avgLatency": "平均レイテンシ",
+    "cacheCreationCostPerMillion": "キャッシュ書き込みコスト（100万 tokens あたり、USD）",
+    "cacheReadCostPerMillion": "キャッシュ読み取りコスト（100万 tokens あたり、USD）",
+    "editPricing": "価格設定を編集",
+    "inputCostPerMillion": "入力コスト（100万 tokens あたり、USD）",
+    "invalidPrice": "価格は 0 以上の数値である必要があります",
+    "invalidTimeRange": "開始時刻と終了時刻を両方選択してください",
+    "invalidTimeRangeOrder": "開始時刻は終了時刻より後にできません",
+    "modelId": "モデル ID",
+    "modelIdRequired": "モデル ID は必須です",
+    "never": "更新なし",
+    "outputCostPerMillion": "出力コスト（100万 tokens あたり、USD）",
+    "pricingAdded": "価格設定を追加しました",
+    "pricingUpdated": "価格設定を更新しました",
+    "requestId": "リクエスト ID",
+    "requests": "リクエスト数",
+    "successRate": "成功率",
+    "timeRangeTooLarge": "時間範囲が大きすぎます。範囲を絞ってください",
+    "tokens": "Tokens"
   },
   "usageScript": {
     "title": "利用状況を設定",
@@ -1522,7 +1576,14 @@
       "skillsPath": "スキルパス",
       "hint": "この操作でスキルリポジトリが一覧に追加されます。",
       "hintDetail": "追加後、スキル管理ページから個別のスキルをインストールできます。"
-    }
+    },
+    "usageApiKey": "使用量 API キー",
+    "usageAutoInterval": "自動照会",
+    "usageAutoIntervalValue": "{{minutes}}分ごと",
+    "usageBaseUrl": "使用量照会URL",
+    "usageScript": "使用量照会",
+    "usageScriptDisabled": "無効",
+    "usageScriptEnabled": "有効"
   },
   "iconPicker": {
     "search": "アイコンを検索",
@@ -1678,7 +1739,13 @@
       "hint": "テイクオーバーするアプリを選択します。有効にすると、そのアプリのリクエストはローカルプロキシ経由で転送されます",
       "enabled": "{{app}} テイクオーバー有効",
       "disabled": "{{app}} テイクオーバー無効",
-      "failed": "テイクオーバーの切り替えに失敗しました"
+      "failed": "テイクオーバーの切り替えに失敗しました",
+      "requiredForClaudeRouting": "このカードを使うには先に Claude プロキシテイクオーバーを有効にしてください。",
+      "tooltip": {
+        "active": "{{app}} テイクオーバー中 - {{address}}:{{port}}\nこのアプリのプロバイダー切り替えはホットスワップされます",
+        "broken": "{{app}} はテイクオーバー中ですが、プロキシサービスが起動していません",
+        "inactive": "{{app}} の Live 設定をテイクオーバーして、リクエストをローカルプロキシ経由にします"
+      }
     },
     "failover": {
       "proxyRequired": "フェイルオーバーを設定するには、プロキシサービスを先に起動する必要があります",
@@ -1701,7 +1768,8 @@
       "removeFailed": "削除に失敗しました",
       "reorderSuccess": "キュー順序を更新しました",
       "reorderFailed": "順序の更新に失敗しました",
-      "toggleFailed": "状態の更新に失敗しました"
+      "toggleFailed": "状態の更新に失敗しました",
+      "modelInfo": "これは現在のモデル族専用のバックアップキューで、このモデル族にのみ影響します。空の場合は Claude 共通キューにフォールバックします。"
     },
     "autoFailover": {
       "info": "フェイルオーバーキューに複数のプロバイダーが設定されている場合、リクエストが失敗すると優先度順に試行します。プロバイダーが連続失敗のしきい値に達すると、サーキットブレーカーが開き、一時的にスキップされます。",
@@ -1728,8 +1796,76 @@
       "successThresholdLabel": "回復成功しきい値",
       "successThresholdExplain": "半開状態でこの回数成功するとサーキットブレーカーが閉じ、プロバイダーが再び利用可能になります",
       "errorRateLabel": "エラー率しきい値",
-      "errorRateExplain": "失敗しきい値に達していなくても、エラー率がこの値を超えるとサーキットブレーカーが開きます"
-    }
+      "errorRateExplain": "失敗しきい値に達していなくても、エラー率がこの値を超えるとサーキットブレーカーが開きます",
+      "maxRetries": "最大リトライ回数",
+      "maxRetriesHint": "リクエスト失敗時のリトライ回数（0-10）",
+      "nonStreaming": "非ストリーミングタイムアウト",
+      "nonStreamingHint": "非ストリーミングリクエストの総タイムアウト。範囲は 60〜1200 秒、既定は 600 秒（10 分）。",
+      "streamingFirstByte": "ストリーミング初回バイトタイムアウト",
+      "streamingFirstByteHint": "最初のデータチャンクを待つ最大時間。範囲は 1〜120 秒、既定は 60 秒。",
+      "streamingIdle": "ストリーミングアイドルタイムアウト",
+      "streamingIdleHint": "データチャンク間の最大間隔。範囲は 60〜600 秒、0 で無効化（途中ハング防止）。",
+      "timeoutSettings": "タイムアウト設定"
+    },
+    "claudeModelRouting": {
+      "defaultProvider": "優先プロバイダー",
+      "description": "まずモデル優先先を使用し、失敗したらモデル別バックアップへ。すべて失敗した場合はグローバルバックアップへフォールバックします。",
+      "failoverMode": "モデルバックアップモード",
+      "failoverModeRandom": "ランダム",
+      "failoverModeRoundRobin": "ラウンドロビン",
+      "modelColumn": "モデル",
+      "modelQueueDescription": "上から順に試行します。このモデルにバックアップリストがない場合は、グローバルバックアップキューにフォールバックします。",
+      "modelQueueTitle": "モデルバックアップキュー",
+      "none": "固定しない（グローバル既定を使用）",
+      "providerNotFound": "一致するプロバイダーが見つかりません",
+      "queueDisabledHint": "モデルルーティングは現在無効です。先にプロバイダー一覧で「Claude モデルルーティング（モデル->プロバイダー）」を有効にしてください。",
+      "rowRouteActive": "優先プロバイダーを固定済み",
+      "rowRouteInactive": "未固定（グローバル既定を使用）",
+      "searchProvider": "名前でプロバイダーを検索...",
+      "statusColumn": "状態",
+      "step2": "モデル種別ごとの優先プロバイダー",
+      "step3": "モデルバックアップ順序",
+      "title": "Claude モデルルーティング（カスタム）"
+    },
+    "logging": {
+      "disabled": "ログ記録を無効にしました",
+      "enabled": "ログ記録を有効にしました",
+      "failed": "ログ状態の切り替えに失敗しました"
+    },
+    "mode": {
+      "bannerTitle": "Claude モデルルーティング（モデル->プロバイダー）",
+      "collapseModelRoutes": "モデルルーティング詳細を折りたたむ",
+      "editForkFailover": "Claude ルーティング設定を編集",
+      "expandModelRoutes": "モデルルーティング詳細を展開",
+      "global": "グローバルフェイルオーバーモード",
+      "globalFallback": "グローバルモードにフォールバック",
+      "modelBackupEditHint": "モデルバックアップの設定は「編集」をクリックして設定ページで行ってください。",
+      "modelFailover": "モデルレベルのフェイルオーバーモード",
+      "modelNameForProvider": "モデル: {{model}}",
+      "modelRouting": "モデル族ルーティングモード",
+      "modelRoutingAndFailover": "モデルレベルフェイルオーバー + モデル族ルーティング",
+      "recentSwitch": "直近の切り替え: {{provider}}（{{source}}）",
+      "recentSwitchEmpty": "直近の切り替え: なし",
+      "retryCount": "フェイルオーバー {{count}} 回",
+      "routeModeAlreadyEnabled": "「優先固定 + 自動バックアップ」はすでに有効です。編集から調整できます。",
+      "routeToggle": "ルーティングモード",
+      "tagDefault": "デフォルトルート",
+      "tagFailover": "フェイルオーバー",
+      "virtualActionUnsupported": "仮想プロバイダーではルーティング設定の編集のみ対応しています",
+      "virtualNotInFailoverQueue": "Claude 自動フェイルオーバーが有効です: このカードは P1/P2 キュー順位に参加せず、ルーティング設定専用です。",
+      "virtualProvider": "仮想プロバイダー"
+    },
+    "server": {
+      "startFailed": "プロキシサービスの起動に失敗しました: {{detail}}",
+      "started": "プロキシサービスを起動しました - {{address}}:{{port}}"
+    },
+    "switchSource": {
+      "failover": "フェイルオーバー",
+      "failoverEnabled": "フェイルオーバー有効",
+      "manual": "手動切替"
+    },
+    "stoppedWithRestore": "プロキシサービスを停止しました。すべてのテイクオーバー設定を復元しました。",
+    "stopWithRestoreFailed": "停止に失敗しました: {{detail}}"
   },
   "streamCheck": {
     "configSaved": "ヘルスチェック設定を保存しました",
@@ -1743,7 +1879,12 @@
     "maxRetries": "最大リトライ回数",
     "degradedThreshold": "劣化しきい値（ミリ秒）",
     "testPrompt": "テストプロンプト",
-    "failedHint": "検出結果は参考情報です。一部のプロバイダーはこの検出方式に対応していない場合があります。手動でご確認ください。"
+    "failedHint": "検出結果は参考情報です。一部のプロバイダーはこの検出方式に対応していない場合があります。手動でご確認ください。",
+    "error": "{{name}} のチェックでエラー: {{error}}",
+    "failed": "{{name}} のチェックに失敗: {{error}}",
+    "testPromptHint": "1行に1つのプロンプトを入力すると、テスト時にランダム選択されます",
+    "operational": "{{name}} は正常です ({{time}}ms)",
+    "degraded": "{{name}} は応答が遅いです ({{time}}ms)"
   },
   "proxyConfig": {
     "proxyEnabled": "プロキシ有効",
