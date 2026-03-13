@@ -562,7 +562,7 @@
     "installCommandsCopied": "インストールコマンドをコピーしました",
     "installCommandsCopyFailed": "コピーに失敗しました。手動でコピーしてください。",
     "importFailedError": "設定のインポートに失敗しました: {{message}}",
-    "exportFailedError": "設定のエクスポートに失敗しました:",
+    "exportFailedError": "設定のエクスポートに失敗しました: {{message}}",
     "restartRequired": "再起動が必要です",
     "restartRequiredMessage": "CC Switch の設定ディレクトリを変更すると再起動が必要です。今すぐ再起動しますか？",
     "restartNow": "今すぐ再起動",
@@ -772,7 +772,7 @@
     "fetchModelsFailedHint": "モデルの取得に失敗しました。エンドポイントと API Key を確認してください",
     "fetchedModelCount": "{{count}} 件のモデルを取得",
     "modelConfig": "モデル設定",
-    "modelsFetched": "モデルの取得に成功しました"
+    "modelsFetched": "{{count}} 件のモデルを取得しました"
   },
   "endpointTest": {
     "title": "API エンドポイント管理",
@@ -846,7 +846,8 @@
     "saveFailed": "保存に失敗しました: {{error}}",
     "modelNameHint": "使用するモデルを指定します。config.toml に自動更新されます",
     "modelName": "モデル名",
-    "modelNamePlaceholder": "例: gpt-5-codex"
+    "modelNamePlaceholder": "例: gpt-5-codex",
+    "noCommonConfigToApply": "共通設定スニペットが空か、書き込み可能な内容がありません"
   },
   "geminiConfig": {
     "envFile": "環境変数 (.env)",
@@ -900,7 +901,7 @@
     "modelOptionKeyPlaceholder": "provider",
     "modelOptionValuePlaceholder": "{\"order\": [\"baseten\"]}",
     "importFetchedModels": "取得したモデルをインポート",
-    "importFetchedModelsResult": "{{count}} 件のモデルをインポートしました",
+    "importFetchedModelsResult": "インポート完了：新規 {{imported}} 件、名前補完 {{updated}} 件。",
     "noFetchedModels": "インポートできるモデルがありません"
   },
   "providerPreset": {
@@ -1857,7 +1858,7 @@
       "reorderSuccess": "キュー順序を更新しました",
       "reorderFailed": "順序の更新に失敗しました",
       "toggleFailed": "状態の更新に失敗しました",
-      "modelInfo": "モデル: {{model}}"
+      "modelInfo": "現在のモデルファミリー専用のバックアップキューです。空の場合、Claude の汎用キューにフォールバックします。"
     },
     "autoFailover": {
       "info": "フェイルオーバーキューに複数のプロバイダーが設定されている場合、リクエストが失敗すると優先度順に試行します。プロバイダーが連続失敗のしきい値に達すると、サーキットブレーカーが開き、一時的にスキップされます。",

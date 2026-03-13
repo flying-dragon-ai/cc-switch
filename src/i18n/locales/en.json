@@ -562,7 +562,7 @@
     "installCommandsCopied": "Install commands copied",
     "installCommandsCopyFailed": "Copy failed, please copy manually.",
     "importFailedError": "Import config failed: {{message}}",
-    "exportFailedError": "Export config failed:",
+    "exportFailedError": "Export config failed: {{message}}",
     "restartRequired": "Restart Required",
     "restartRequiredMessage": "Modifying the CC Switch configuration directory requires restarting the application to take effect. Restart now?",
     "restartNow": "Restart Now",
@@ -772,7 +772,7 @@
     "fetchModelsFailedHint": "Failed to fetch models, please check the endpoint and API Key",
     "fetchedModelCount": "{{count}} models fetched",
     "modelConfig": "Model Config",
-    "modelsFetched": "Models fetched successfully"
+    "modelsFetched": "{{count}} models fetched successfully"
   },
   "endpointTest": {
     "title": "API Endpoint Management",
@@ -846,7 +846,8 @@
     "saveFailed": "Save failed: {{error}}",
     "modelNameHint": "Specify the model to use, will be auto-updated in config.toml",
     "modelName": "Model Name",
-    "modelNamePlaceholder": "e.g., gpt-5-codex"
+    "modelNamePlaceholder": "e.g., gpt-5-codex",
+    "noCommonConfigToApply": "Common config snippet is empty or has no writable content"
   },
   "geminiConfig": {
     "envFile": "Environment Variables (.env)",
@@ -900,7 +901,7 @@
     "modelOptionKeyPlaceholder": "provider",
     "modelOptionValuePlaceholder": "{\"order\": [\"baseten\"]}",
     "importFetchedModels": "Import fetched models",
-    "importFetchedModelsResult": "Imported {{count}} models",
+    "importFetchedModelsResult": "Import complete: {{imported}} new, {{updated}} names updated.",
     "noFetchedModels": "No fetched models to import"
   },
   "providerPreset": {
@@ -1857,7 +1858,7 @@
       "reorderSuccess": "Queue order updated",
       "reorderFailed": "Failed to update order",
       "toggleFailed": "Failed to update status",
-      "modelInfo": "Model: {{model}}"
+      "modelInfo": "This is an independent backup queue for the current model family. If empty, the system falls back to the general Claude queue."
     },
     "autoFailover": {
       "info": "When the failover queue has multiple providers, the system will try them in priority order when requests fail. When a provider reaches the consecutive failure threshold, the circuit breaker will open and skip it temporarily.",
